@@ -190,28 +190,85 @@ e à consolidação em Parquet; não é endossada pelo Ministério da Saúde.
 
 [Código-fonte do SISAB Extrator](https://github.com/maiconcarlospng/sisab-extrator).
 
-## Uso diretamente no R (pacote `sisabextrator`)
+## Pacote R — instalação pelo GitHub e R-universe
 
-Também há uma interface R independente em [`rpkg/`](rpkg/README.md):
+A interface R `sisabextrator` agora fica na **raiz** deste repositório,
+com `DESCRIPTION`, `NAMESPACE`, `R/` e `man/`. A subpasta
+`rpkg/` é mantida temporariamente apenas para compatibilidade.
+
+### Instalação pelo GitHub (disponível)
 
 ```r
-install.packages(c("remotes", "arrow", "dplyr"))
-remotes::install_github("maiconcarlospng/sisab-extrator", subdir = "rpkg")
+install.packages("remotes")
+remotes::install_github("maiconcarlospng/sisab-extrator")
 library(sisabextrator)
-
-# O pacote R usa o motor Python, que precisa ser instalado uma vez:
-sisab_instalar_motor(python = "python")
-sisab_inspecionar(relatorio = "federal")
-
-# Trabalhe com Parquets lazy, sem ler anos inteiros em RAM:
-dados <- sisab_abrir_anuais()
-mg <- sisab_filtrar_mg(dados)
 ```
 
-### Lições de séries históricas extensas
+### Instalação pelo R-universe (depois de ativar o universo)
 
-- **Memória:** evitar empilhar CSV ZIPs com `read_csv()`/`bind_rows()` em R. O motor Python lê os ZIPs um a um, transforma dados em lotes de 25 mil linhas e consolida por lotes; Arrow no R filtra antes de `collect()`.
-- **Esquema histórico:** os arquivos processados usam um esquema canônico, com nomes geográficos alternativos reconhecidos; ao concatenar Parquets, campos opcionais antigos ausentes recebem `NULL` (nunca zero). CSVs originais ficam em `data/brutos/` para auditoria.
-- **2013:** os comandos `--start auto --end auto` respeitam competências que o SISAB oferece. Quando se informa `201301`, `201302` ou `201303`, o planejador exclui competências indisponíveis e emite aviso. Não consideramos essas competências disponíveis sem verificá-las no portal.
-- **Instabilidade:** SQLite controla o estado das consultas, cache evita refazer downloads concluídos, e HTTP tem pausas e tentativas com espera progressiva.
-- **Atenção:** a resposta HTTP de **uma consulta individual** ainda é recebida em memória antes de gravar o ZIP. O processamento do ZIP e a consolidação são feitos em lotes, evitando carregar simultaneamente dezenas ou centenas de arquivos.
+```r
+install.packages(
+  "sisabextrator",
+  repos = c("https://maiconcarlospng.r-universe.dev", "https://cloud.r-project.org")
+)
+library(sisabextrator)
+```
+
+O pacote só aparecerá nesse endereço após **criar o repositório de configuração,
+instalar o GitHub App e ter uma compilação bem-sucedida**. Não foi publicado
+automaticamente apenas por este commit.
+
+O pacote R pode ser instalado sem Python para leitura de arquivos Parquet;
+**para baixar do SISAB**, o motor Python 3.10+ é instalado separadamente:
+
+```r
+sisab_instalar_motor(python = "python")
+sisab_inspecionar(relatorio = "federal")
+```
+
+Para análise das bases Parquet, instale `arrow` e `dplyr` e filtre
+os dados antes de `collect()`:
+
+```r
+install.packages(c("arrow", "dplyr"))
+library(dplyr)
+dados <- sisab_abrir_anuais()
+mg <- sisab_filtrar_mg(dados)
+recorte <- mg |>
+  filter(competencia == "202401", coluna == "CIAP/CID") |>
+  collect()
+```
+
+**Atenção:** exemplos de filtros dependem da nomenclatura real das opções
+encontradas em `sisab_inspecionar()`; o motor é experimental e os relatórios
+SISAB públicos trazem contagens agregadas, não prontuários individuais.
+Consultas diferentes podem medir os mesmos atendimentos. Não some visões
+sobrepostas.
+
+### Publicar no R-universe
+
+O R-universe requer um **outro** repositório público chamado
+[`maiconcarlospng.r-universe.dev`](https://github.com/maiconcarlospng/maiconcarlospng.r-universe.dev)
+na mesma conta do GitHub. Nele, crie um `packages.json` na raiz com o
+conteúdo de [`r-universe/packages.json`](r-universe/packages.json).
+**Não use `subdir`**: o pacote R está agora na raiz de `sisab-extrator`.
+
+Depois, instale o
+[GitHub App R-universe](https://github.com/apps/r-universe/installations/new)
+na conta `maiconcarlospng`, concedendo acesso ao repositório do universo e
+ao repositório do pacote. Consulte a
+[documentação oficial](https://docs.r-universe.dev/publish/set-up.html).
+Aguarde a compilação e verifique os logs no painel do R-universe.
+
+### Histórico de grandes volumes
+
+- **Memória:** os ZIPs e os Parquets são tratados por lotes; análises no R
+  usam `arrow::open_dataset()` e filtros preguiçosos.
+- **Esquema:** os Parquets usam esquema canônico para evitar conflitos de
+  tipagem entre os anos. Respostas originais são preservadas para auditoria.
+- **2013:** o modo automático usa as competências disponibilizadas no site,
+  sem assumir `201301` a `201303` como disponíveis.
+- **Falhas de rede:** estado de consultas no SQLite, retomada e tentativas
+  com espera progressiva.
+- O download HTTP de **uma resposta individual** ainda pode consumir RAM
+  proporcional ao tamanho dessa resposta.

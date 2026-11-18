@@ -1,0 +1,12 @@
+^\.github$
+^\.gitignore$
+^\.Rbuildignore$
+^pyproject\.toml$
+^rpkg$
+^sisab_extrator$
+^tests$
+^scripts$
+^r-universe$
+^data$
+^\.pytest_cache$
+^.*\.egg-info$

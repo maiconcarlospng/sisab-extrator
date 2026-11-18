@@ -1,3 +1,15 @@
+# Pacote R legado
+
+A interface R oficial do SISAB Extrator agora está na **raiz do repositório** para permitir a publicação no R-universe. Prefira:
+
+```r
+remotes::install_github("maiconcarlospng/sisab-extrator")
+```
+
+Esta pasta `rpkg/` foi mantida temporariamente para compatibilidade e não é a origem das compilações do R-universe.
+
+---
+
 # sisabextrator — interface para R
 
 Permite executar o pacote Python **sisab-extrator** e ler os Parquets gerados pelo R sem importar arquivos grandes inteiros para a RAM.
