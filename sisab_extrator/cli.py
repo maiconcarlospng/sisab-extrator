@@ -12,7 +12,7 @@ from typing import Iterator
 
 from .model import AGE_GROUPS, REPORT_URLS, SEXES, Job, months, parse_month
 from .portal import Client, NoData, Page, PortalError
-from .storage import Catalog, parquet_path, raw_path, read_raw_zip, save_raw_zip
+from .storage import Catalog, parquet_path, raw_path, save_raw_zip
 
 LOG = logging.getLogger("sisab_extrator")
 
@@ -187,13 +187,12 @@ def cmd_download(args) -> int:
                     skipped += 1
                     continue
                 try:
-                    if source.exists() and not args.force:
-                        content = read_raw_zip(source)
-                    else:
+                    if not source.exists() or args.force:
                         content = p.client.download(job)
                         save_raw_zip(source, content, job)
-                    from .parquet import write_monthly
-                    nr = write_monthly(destination, content, job)
+                        del content
+                    from .parquet import write_monthly_from_zip
+                    nr = write_monthly_from_zip(destination, source, job)
                     catalog.update(job.key, "ok", raw=str(source), parquet=str(destination), linhas=nr)
                     success += 1
                 except NoData:

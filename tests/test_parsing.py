@@ -37,3 +37,25 @@ def test_invalid_numeric_fails():
 def test_nonstandard_header_fails_explicitly():
     with pytest.raises(ValueError):
         list(table_rows(b"Um relatorio;com muitos;campos\nX;Y;Z\n"))
+
+
+def test_historical_uf_and_municipio_aliases():
+    csv = b"co_uf_ibge;co_municipio_ibge;nm_municipio;E11;\n31;3146107;Ouro Preto;42;\n"
+    row, = list(normalizar(csv, example_job()))
+    assert row["uf"] == "MG"
+    assert row["ibge"] == "3146107"
+    assert row["municipio"] == "Ouro Preto"
+    assert "co_uf_ibge" in row["dimensoes_json"]
+
+
+def test_read_original_zip_in_batches(tmp_path):
+    from sisab_extrator.storage import raw_path, save_raw_zip
+    from sisab_extrator.parquet import table_rows_reader
+    import zipfile
+    import io
+    j = example_job()
+    path = raw_path(tmp_path, j)
+    save_raw_zip(path, CSV.encode("iso-8859-1"), j)
+    with zipfile.ZipFile(path) as z, z.open("resposta_original.csv") as f:
+        with io.TextIOWrapper(f, encoding="iso-8859-1", newline="") as stream:
+            assert len(list(table_rows_reader(stream))) == 2

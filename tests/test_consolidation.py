@@ -35,3 +35,20 @@ def test_dont_consolidate_incomplete(tmp_path: Path):
             consolidate(cat, "202401", "202401")
     finally:
         cat.close()
+
+
+def test_consolidate_legacy_schema_optional_columns(tmp_path: Path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from sisab_extrator.parquet import _concatenate, schema
+    full = schema()
+    reduced = pa.schema([f for f in full if f.name not in {"sexo", "faixa_etaria", "municipio"}])
+    values = {f.name: ([2024] if f.name == "ano" else [1] if f.name == "valor" else ["202401"] if f.name == "competencia" else ["teste"]) for f in reduced}
+    original = tmp_path / "origem.parquet"
+    pq.write_table(pa.Table.from_pydict(values, schema=reduced), original)
+    output = tmp_path / "consolidado.parquet"
+    assert _concatenate([original], output) == 1
+    result = pq.read_table(output)
+    assert result.schema.equals(full)
+    assert result["sexo"][0].as_py() is None
+    assert result["municipio"][0].as_py() is None

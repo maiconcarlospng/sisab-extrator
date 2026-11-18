@@ -189,3 +189,29 @@ e à consolidação em Parquet; não é endossada pelo Ministério da Saúde.
 ## Repositório
 
 [Código-fonte do SISAB Extrator](https://github.com/maiconcarlospng/sisab-extrator).
+
+## Uso diretamente no R (pacote `sisabextrator`)
+
+Também há uma interface R independente em [`rpkg/`](rpkg/README.md):
+
+```r
+install.packages(c("remotes", "arrow", "dplyr"))
+remotes::install_github("maiconcarlospng/sisab-extrator", subdir = "rpkg")
+library(sisabextrator)
+
+# O pacote R usa o motor Python, que precisa ser instalado uma vez:
+sisab_instalar_motor(python = "python")
+sisab_inspecionar(relatorio = "federal")
+
+# Trabalhe com Parquets lazy, sem ler anos inteiros em RAM:
+dados <- sisab_abrir_anuais()
+mg <- sisab_filtrar_mg(dados)
+```
+
+### Lições de séries históricas extensas
+
+- **Memória:** evitar empilhar CSV ZIPs com `read_csv()`/`bind_rows()` em R. O motor Python lê os ZIPs um a um, transforma dados em lotes de 25 mil linhas e consolida por lotes; Arrow no R filtra antes de `collect()`.
+- **Esquema histórico:** os arquivos processados usam um esquema canônico, com nomes geográficos alternativos reconhecidos; ao concatenar Parquets, campos opcionais antigos ausentes recebem `NULL` (nunca zero). CSVs originais ficam em `data/brutos/` para auditoria.
+- **2013:** os comandos `--start auto --end auto` respeitam competências que o SISAB oferece. Quando se informa `201301`, `201302` ou `201303`, o planejador exclui competências indisponíveis e emite aviso. Não consideramos essas competências disponíveis sem verificá-las no portal.
+- **Instabilidade:** SQLite controla o estado das consultas, cache evita refazer downloads concluídos, e HTTP tem pausas e tentativas com espera progressiva.
+- **Atenção:** a resposta HTTP de **uma consulta individual** ainda é recebida em memória antes de gravar o ZIP. O processamento do ZIP e a consolidação são feitos em lotes, evitando carregar simultaneamente dezenas ou centenas de arquivos.

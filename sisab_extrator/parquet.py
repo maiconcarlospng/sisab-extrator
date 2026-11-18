@@ -10,15 +10,38 @@ import io
 import json
 import os
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Iterator
 
 from .model import Job, months
 from .storage import Catalog
 
-DIMENSIONS = {"uf", "ibge", "municipio", "município", "regiao", "região", "macrorregiao",
-              "macrorregião", "cnes", "ine", "equipe", "equipe iné", "estabelecimento",
-              "profissional", "cbo", "unidade federativa", "municipio ibge"}
+# Colunas geográficas históricas variam conforme a versão do relatório.
+# Não pressupomos que os nomes alternativos tenham sempre o mesmo significado:
+# mantemos as dimensões originais em dimensoes_json.
+DIMENSIONS = {"uf", "sg_uf", "co_uf", "ibge_uf", "co_uf_ibge", "codigo_uf",
+              "ibge", "co_municipio_ibge", "codigo_municipio", "co_municipio",
+              "municipio", "município", "nome_municipio", "nm_municipio",
+              "regiao", "região", "macrorregiao", "macrorregião", "cnes", "ine",
+              "equipe", "equipe iné", "estabelecimento", "profissional", "cbo",
+              "unidade federativa", "municipio ibge"}
+UF_ALIASES = ("uf", "sg_uf", "co_uf", "ibge_uf", "co_uf_ibge", "codigo_uf", "unidade federativa")
+IBGE_ALIASES = ("ibge", "co_municipio_ibge", "codigo_municipio", "co_municipio", "municipio ibge")
+MUNICIPIO_ALIASES = ("municipio", "município", "nome_municipio", "nm_municipio")
+
+
+def _first_dimension(dimensions: dict[str, str], names: tuple[str, ...]) -> str | None:
+    return next((dimensions[k] for k in names if k in dimensions and dimensions[k].strip()), None)
+
+
+def _uf_standard(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip().upper()
+    # Equivalências inequívocas para MG; demais códigos são preservados.
+    return "MG" if cleaned in {"31", "310000", "MG"} else cleaned
+
 
 
 def decode_csv(content: bytes) -> str:
@@ -31,12 +54,17 @@ def decode_csv(content: bytes) -> str:
 
 
 def table_rows(content: bytes) -> Iterator[tuple[list[str], list[str], int]]:
+    """Lê bytes de uma única consulta; arquivos ZIP usam table_rows_reader."""
+    yield from table_rows_reader(io.StringIO(decode_csv(content), newline=""))
+
+
+def table_rows_reader(text_file) -> Iterator[tuple[list[str], list[str], int]]:
     """Identifica o cabeçalho real após metadados e produz registros originais.
 
     dimension_count é estritamente baseado em nomes identificáveis; quando
     o portal muda o esquema, exige ajuste explícito, não inventa uma métrica.
     """
-    reader = csv.reader(io.StringIO(decode_csv(content), newline=""), delimiter=";")
+    reader = csv.reader(text_file, delimiter=";")
     header = None
     n_dims = 0
     for row in reader:
@@ -77,7 +105,11 @@ def br_number(value: str) -> int | None:
 
 
 def normalizar(content: bytes, job: Job) -> Iterator[dict]:
-    for cols, cells, n_dims in table_rows(content):
+    yield from normalizar_linhas(table_rows(content), job)
+
+
+def normalizar_linhas(entries: Iterator[tuple[list[str], list[str], int]], job: Job) -> Iterator[dict]:
+    for cols, cells, n_dims in entries:
         dims = dict(zip(cols[:n_dims], (x.strip() for x in cells[:n_dims])))
         lower = {k.casefold(): v for k, v in dims.items()}
         for label, val in zip(cols[n_dims:], cells[n_dims:]):
@@ -97,9 +129,9 @@ def normalizar(content: bytes, job: Job) -> Iterator[dict]:
                 "coluna": job.coluna_label,
                 "faixa_etaria": job.faixa_etaria or None,
                 "sexo": job.sexo or None,
-                "uf": lower.get("uf"),
-                "ibge": lower.get("ibge"),
-                "municipio": lower.get("municipio", lower.get("município")),
+                "uf": _uf_standard(_first_dimension(lower, UF_ALIASES)),
+                "ibge": _first_dimension(lower, IBGE_ALIASES),
+                "municipio": _first_dimension(lower, MUNICIPIO_ALIASES),
                 "categoria": label.strip(),
                 "valor": number,
                 "dimensoes_json": json.dumps(dims, ensure_ascii=False, sort_keys=True),
@@ -137,6 +169,25 @@ def schema():
 
 
 def write_monthly(path: Path, content: bytes, job: Job, batch_size: int = 25000) -> int:
+    return _write_monthly_rows(path, normalizar(content, job), batch_size)
+
+
+def write_monthly_from_zip(path: Path, raw_zip: Path, job: Job, batch_size: int = 25000) -> int:
+    """Converte ZIP diretamente em lotes, sem descompactar o CSV inteiro na RAM."""
+    with zipfile.ZipFile(raw_zip) as z:
+        with z.open("resposta_original.csv") as compressed:
+            sample = compressed.peek(65536)[:65536]
+            try:
+                sample.decode("utf-8-sig")
+                encoding = "utf-8-sig"
+            except UnicodeDecodeError:
+                encoding = "iso-8859-1"
+            with io.TextIOWrapper(compressed, encoding=encoding, newline="") as text:
+                rows = normalizar_linhas(table_rows_reader(text), job)
+                return _write_monthly_rows(path, rows, batch_size)
+
+
+def _write_monthly_rows(path: Path, rows: Iterator[dict], batch_size: int = 25000) -> int:
     pa, pq = _arrow()
     sc = schema()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +199,7 @@ def write_monthly(path: Path, content: bytes, job: Job, batch_size: int = 25000)
             file_name = f.name
         writer = pq.ParquetWriter(file_name, sc, compression="zstd")
         batch = []
-        for item in normalizar(content, job):
+        for item in rows:
             batch.append(item)
             if len(batch) >= batch_size:
                 writer.write_table(pa.Table.from_pylist(batch, schema=sc))
@@ -170,9 +221,31 @@ def write_monthly(path: Path, content: bytes, job: Job, batch_size: int = 25000)
             os.unlink(file_name)
 
 
+# Campos essenciais para a rastreabilidade; outros podem ser completados com null
+# quando versões antigas do Parquet tinham menos dimensões.
+REQUIRED_FIELDS = {"consulta_id", "competencia", "ano", "relatorio", "linha", "coluna", "categoria", "valor"}
+
+
+def _align_table(table, target_schema):
+    """Alinha por nome e converte tipos de forma segura, sem inferência automática."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    absent = REQUIRED_FIELDS.difference(table.schema.names)
+    if absent:
+        raise ValueError(f"Parquet sem campos essenciais: {', '.join(sorted(absent))}")
+    columns = []
+    for field in target_schema:
+        if field.name in table.schema.names:
+            columns.append(pc.cast(table[field.name], field.type, safe=True))
+        else:
+            columns.append(pa.nulls(table.num_rows, type=field.type))
+    return pa.Table.from_arrays(columns, schema=target_schema)
+
+
 def _concatenate(paths: list[Path], target: Path, *, start: str | None = None,
                  end: str | None = None) -> int:
-    """Concatena em lotes, sem carregar o conjunto inteiro na memória."""
+    """Concatena por lotes com esquema canônico e gravação atômica em disco."""
     pa, pq = _arrow()
     sc = schema()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -187,11 +260,9 @@ def _concatenate(paths: list[Path], target: Path, *, start: str | None = None,
             if not file.is_file():
                 raise FileNotFoundError(f"Parquet ausente: {file}")
             pf = pq.ParquetFile(file)
-            if not pf.schema_arrow.equals(sc, check_metadata=False):
-                raise ValueError(f"Esquema inconsistente em {file}")
-            for batch in pf.iter_batches(batch_size=50000):
+            for batch in pf.iter_batches(batch_size=25000):
+                table = _align_table(pa.Table.from_batches([batch]), sc)
                 if start or end:
-                    table = pa.Table.from_batches([batch], schema=sc)
                     import pyarrow.compute as pc
                     mask = None
                     if start:
@@ -201,8 +272,6 @@ def _concatenate(paths: list[Path], target: Path, *, start: str | None = None,
                         mask = pc.and_(mask, upper) if mask is not None else upper
                     if mask is not None:
                         table = table.filter(mask)
-                else:
-                    table = pa.Table.from_batches([batch], schema=sc)
                 if table.num_rows:
                     writer.write_table(table)
                     total += table.num_rows
