@@ -11,9 +11,12 @@ O R-universe NÃO lê a configuração daqui.
    aplicativo na conta `maiconcarlospng` e conceda acesso aos repositórios
    `maiconcarlospng.r-universe.dev` e `sisab-extrator` (ou selecione
    todos os repositórios, se preferir).
-4. Verifique a compilação em https://maiconcarlospng.r-universe.dev e, se
-   houver erros, consulte os logs. O pacote R da raiz precisa passar nos
-   checks antes de ficar disponível.
+4. A [primeira compilação](https://docs.r-universe.dev/publish/set-up.html#wait-first-build)
+   pode levar **cerca de 1 hora**. Verifique o estado em
+   https://maiconcarlospng.r-universe.dev; antes de terminar, a mensagem
+   `No packages found for this owner or maintainer` pode ser transitória.
+   Se, passado esse prazo, ainda não aparecer, consulte os registros do
+   R-universe. Um check aprovado no GitHub Actions não confirma publicação.
 5. Após a publicação, instale no R:
 
 ```r
