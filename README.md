@@ -214,9 +214,24 @@ install.packages(
 library(sisabextrator)
 ```
 
-O pacote só aparecerá nesse endereço após **criar o repositório de configuração,
-instalar o GitHub App e ter uma compilação bem-sucedida**. Não foi publicado
-automaticamente apenas por este commit.
+**Primeira publicação:** o repositório de configuração
+[`maiconcarlospng.r-universe.dev`](https://github.com/maiconcarlospng/maiconcarlospng.r-universe.dev)
+e seu `packages.json` já foram criados. O GitHub App foi autorizado com acesso
+a todos os repositórios. Segundo a [etapa de primeira compilação da documentação
+do R-universe](https://docs.r-universe.dev/publish/set-up.html#wait-first-build),
+o processamento inicial pode levar **cerca de 1 hora**. Durante esse intervalo,
+a mensagem `No packages found for this owner or maintainer` e a ausência do
+índice `PACKAGES` podem indicar apenas que a indexação ainda não terminou.
+
+**A compilação aprovada no GitHub Actions não substitui a compilação no
+R-universe.** Só tente instalar pelo repositório R-universe quando o pacote
+estiver listado em https://maiconcarlospng.r-universe.dev/.
+
+Se, **após pelo menos 1 hora** desde a ativação, o universo permanecer vazio,
+consulte os registros do serviço e a
+[documentação de publicação](https://docs.r-universe.dev/publish/set-up.html)
+antes de alterar a configuração. Não é necessário criar novamente os
+repositórios ou reinstalar o GitHub App.
 
 O pacote R pode ser instalado sem Python para leitura de arquivos Parquet;
 **para baixar do SISAB**, o motor Python 3.10+ é instalado separadamente:
@@ -258,7 +273,7 @@ Depois, instale o
 na conta `maiconcarlospng`, concedendo acesso ao repositório do universo e
 ao repositório do pacote. Consulte a
 [documentação oficial](https://docs.r-universe.dev/publish/set-up.html).
-Aguarde a compilação e verifique os logs no painel do R-universe.
+A primeira compilação pode levar cerca de 1 hora; verifique a página e os registros do R-universe antes de diagnosticar falhas.
 
 ### Histórico de grandes volumes
 
