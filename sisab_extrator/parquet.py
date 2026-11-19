@@ -172,7 +172,8 @@ def write_monthly(path: Path, content: bytes, job: Job, batch_size: int = 25000)
     return _write_monthly_rows(path, normalizar(content, job), batch_size)
 
 
-def write_monthly_from_zip(path: Path, raw_zip: Path, job: Job, batch_size: int = 25000) -> int:
+def write_monthly_from_zip(path: Path, raw_zip: Path, job: Job, batch_size: int = 25000,
+                           progress_callback=None) -> int:
     """Converte ZIP diretamente em lotes, sem descompactar o CSV inteiro na RAM."""
     with zipfile.ZipFile(raw_zip) as z:
         with z.open("resposta_original.csv") as compressed:
@@ -184,10 +185,11 @@ def write_monthly_from_zip(path: Path, raw_zip: Path, job: Job, batch_size: int 
                 encoding = "iso-8859-1"
             with io.TextIOWrapper(compressed, encoding=encoding, newline="") as text:
                 rows = normalizar_linhas(table_rows_reader(text), job)
-                return _write_monthly_rows(path, rows, batch_size)
+                return _write_monthly_rows(path, rows, batch_size, progress_callback)
 
 
-def _write_monthly_rows(path: Path, rows: Iterator[dict], batch_size: int = 25000) -> int:
+def _write_monthly_rows(path: Path, rows: Iterator[dict], batch_size: int = 25000,
+                        progress_callback=None) -> int:
     pa, pq = _arrow()
     sc = schema()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -204,10 +206,14 @@ def _write_monthly_rows(path: Path, rows: Iterator[dict], batch_size: int = 2500
             if len(batch) >= batch_size:
                 writer.write_table(pa.Table.from_pylist(batch, schema=sc))
                 count += len(batch)
+                if progress_callback is not None:
+                    progress_callback(count)
                 batch.clear()
         if batch:
             writer.write_table(pa.Table.from_pylist(batch, schema=sc))
             count += len(batch)
+            if progress_callback is not None:
+                progress_callback(count)
         if count == 0:
             raise ValueError("CSV sem medidas numéricas; não marcar como download concluído")
         writer.close()
