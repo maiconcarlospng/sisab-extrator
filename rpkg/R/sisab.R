@@ -37,7 +37,7 @@ NULL
             if (.Platform$OS.type == "windows") "python.exe" else "python")
 }
 
-.sisab_motor_min_version <- "0.1.6"
+.sisab_motor_min_version <- "0.1.7"
 
 .sisab_motor_version <- function(executable) {
   if (!file.exists(executable)) return(NA_character_)
