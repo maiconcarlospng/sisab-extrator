@@ -6,6 +6,7 @@ filtro: ele pode ser apenas uma opção em 'Coluna'.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import random
@@ -18,6 +19,9 @@ import requests
 from bs4 import BeautifulSoup
 
 from .model import Job
+
+
+LOG = logging.getLogger("sisab_extrator.portal")
 
 
 class PortalError(RuntimeError):
@@ -252,14 +256,27 @@ class Client:
         for attempt in range(self.retries + 1):
             if self.delay:
                 time.sleep(self.delay)
+            # Não registrar dados POST, cookies ou tokens no log.
+            safe_path = urlparse(url).path
+            LOG.info("SISAB %s %s | tentativa %d/%d | limite %ss",
+                     method, safe_path, attempt + 1, self.retries + 1, self.timeout)
+            started = time.monotonic()
             try:
                 response = self.session.request(method, url, timeout=self.timeout, **kwargs)
                 response.raise_for_status()
+                LOG.info("SISAB %s concluído | HTTP %d | %.1fs | %d bytes",
+                         method, response.status_code,
+                         time.monotonic() - started, len(response.content))
                 return response
             except requests.RequestException as exc:
                 error = exc
+                LOG.warning("SISAB %s falhou | tentativa %d/%d | %.1fs | %s",
+                            method, attempt + 1, self.retries + 1,
+                            time.monotonic() - started, type(exc).__name__)
                 if attempt < self.retries:
-                    time.sleep(min(self.backoff * (2 ** attempt), 120) + random.random())
+                    wait = min(self.backoff * (2 ** attempt), 120) + random.random()
+                    LOG.info("Aguardando %.1fs antes de repetir...", wait)
+                    time.sleep(wait)
         raise PortalError(f"Falha de rede após tentativas: {error}")
 
     def open(self) -> Page:
