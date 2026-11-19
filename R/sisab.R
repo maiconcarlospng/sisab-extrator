@@ -3,9 +3,9 @@
 #' A interface R controla as consultas e usa Apache Arrow para analisar os
 #' Parquets sem carregar todos os arquivos em RAM.
 #'
-#' @param python Para extrair dados, "auto" usa o ambiente isolado criado por
-#'   sisab_instalar_motor(). Na instalacao, indica o Python base para criar esse
-#'   ambiente (padrao "python"). Um executavel explicito continua permitido.
+#' @param python "auto" prepara e utiliza automaticamente um ambiente Python
+#'   isolado no primeiro download e atualiza o motor quando for muito antigo.
+#'   Na instalacao manual, indica o Python base (padrao "python").
 #' @param dados Diretorio local de dados e do catalogo SQLite.
 #' @param relatorio "federal", "municipal" ou "all".
 #' @param inicio Competencia AAAAMM ou "auto".
@@ -37,18 +37,53 @@ NULL
             if (.Platform$OS.type == "windows") "python.exe" else "python")
 }
 
+.sisab_motor_min_version <- "0.1.6"
+
+.sisab_motor_version <- function(executable) {
+  if (!file.exists(executable)) return(NA_character_)
+  out <- suppressWarnings(tryCatch(
+    system2(executable,
+            args = c("-m", "pip", "show", "sisab-extrator"),
+            stdout = TRUE, stderr = FALSE),
+    error = function(e) character()
+  ))
+  version <- grep("^Version: ", out, value = TRUE)
+  if (!length(version)) return(NA_character_)
+  trimws(sub("^Version: ", "", version[[1L]]))
+}
+
+.sisab_motor_pronto <- function(executable) {
+  current <- .sisab_motor_version(executable)
+  if (is.na(current)) return(FALSE)
+  isTRUE(tryCatch(
+    utils::compareVersion(current, .sisab_motor_min_version) >= 0L,
+    error = function(e) FALSE
+  ))
+}
+
+.sisab_assegurar_motor <- function() {
+  py <- .sisab_venv_python()
+  if (.sisab_motor_pronto(py)) return(py)
+  has_venv <- file.exists(py)
+  message(if (has_venv)
+    "Atualizando motor Python do SISAB Extrator automaticamente..."
+  else
+    "Primeiro uso: instalando motor Python isolado do SISAB Extrator...")
+  sisab_instalar_motor(atualizar = has_venv)
+  if (!.sisab_motor_pronto(py)) {
+    stop("O motor Python nao foi instalado na versao minima exigida (",
+         .sisab_motor_min_version, "). Verifique as mensagens da instalacao.",
+         call. = FALSE)
+  }
+  py
+}
+
 .sisab_python <- function(python = "auto") {
-  if (length(python) != 1L || is.na(python) || !nzchar(python)) {
+  if (!is.character(python) || length(python) != 1L ||
+      is.na(python) || !nzchar(python)) {
     stop("Informe o executavel Python ou use 'auto'.", call. = FALSE)
   }
-  if (identical(python, "auto")) {
-    executable <- .sisab_venv_python()
-    if (!file.exists(executable)) {
-      stop("Motor Python isolado nao encontrado. Execute sisab_instalar_motor() ",
-           "uma vez antes de inspecionar ou baixar dados.", call. = FALSE)
-    }
-    return(executable)
-  }
+  if (identical(python, "auto")) return(.sisab_assegurar_motor())
   binary <- Sys.which(python)
   if (!nzchar(binary)) {
     if (!file.exists(python)) stop("Python nao encontrado: ", python, call. = FALSE)
