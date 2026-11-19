@@ -171,6 +171,7 @@ def cmd_download(args) -> int:
     skipped = 0
     try:
         count = guard_large(prepared, args)
+        LOG.info("Preparando %d consulta(s) do SISAB", count)
         for p in prepared:
             catalog.add_jobs(p.jobs())
         completed = 0
@@ -188,13 +189,23 @@ def cmd_download(args) -> int:
                     skipped += 1
                     continue
                 try:
+                    LOG.info("Consulta %d/%d | %s | competência %s | linha %s | coluna %s",
+                             completed, count, p.name, job.competencia,
+                             job.linha_label, job.coluna_label)
                     if not source.exists() or args.force:
+                        LOG.info("Aguardando exportação CSV do portal...")
                         content = p.client.download(job)
+                        LOG.info("CSV recebido: %d bytes. Salvando arquivo original...", len(content))
                         save_raw_zip(source, content, job)
                         del content
+                    else:
+                        LOG.info("Usando CSV já salvo, sem novo download")
+                    LOG.info("Convertendo CSV para Parquet...")
                     from .parquet import write_monthly_from_zip
                     nr = write_monthly_from_zip(destination, source, job)
                     catalog.update(job.key, "ok", raw=str(source), parquet=str(destination), linhas=nr)
+                    LOG.info("Consulta %d/%d concluída | %d registros Parquet",
+                             completed, count, nr)
                     success += 1
                 except NoData:
                     catalog.update(job.key, "sem_dados", linhas=0)
@@ -212,6 +223,7 @@ def cmd_download(args) -> int:
             print("A consolidação automática será bloqueada até corrigir/repetir as consultas com erro.")
             return 2
         if not args.no_consolidate:
+            LOG.info("Iniciando consolidação anual e da série histórica...")
             from .parquet import consolidate
             actual_start = min(c for p in prepared for c in p.competencias)
             actual_end = max(c for p in prepared for c in p.competencias)
