@@ -1,5 +1,10 @@
 # Publicar o sisabextrator no R-universe
 
+> **Desde a versão R 0.2.1:** `sisab_instalar_motor()` prepara
+> automaticamente um ambiente Python separado do PySUS; as funções de extração
+> usam esse ambiente por padrão. Não é necessário modificar as dependências
+> do Python principal.
+
 O arquivo `packages.json` **deste diretório** é somente um modelo.
 O R-universe NÃO lê a configuração daqui.
 
