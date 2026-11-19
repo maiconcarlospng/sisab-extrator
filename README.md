@@ -15,6 +15,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#comece-aqui--instala%C3%A7%C3%A3o-e-uso-em-poucos-comandos">Comece aqui</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#o-que-ele-faz">Conheça o projeto</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#pr%C3%A9-requisitos-para-usar-o-sisab-extrator">Pré-requisitos</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#instala%C3%A7%C3%A3o-no-rstudio">Instale no R</a> ·
@@ -33,6 +34,64 @@ A ideia é reduzir o trabalho manual de baixar muitos arquivos do portal e facil
 
 > [!IMPORTANT]
 > **Projeto experimental.** O pacote e sua organização de dados foram desenvolvidos e testados, mas a extração nos formulários reais do SISAB ainda precisa ser validada. As opções disponíveis dependem do portal. **Não são microdados de pacientes.**
+
+## Comece aqui — instalação e uso em poucos comandos
+
+No **RStudio**, instale o pacote R uma vez:
+
+```r
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+remotes::install_git("https://github.com/maiconcarlospng/sisab-extrator.git", upgrade = "never")
+```
+
+Reinicie a sessão do R (menu **Session → Restart R**) e use apenas:
+
+```r
+library(sisabextrator)
+sisab()
+```
+
+O comando **`sisab()` abre um menu** com estas escolhas:
+
+- **Baixar dados:** escolha relatório, competência, linha, coluna e, quando
+  necessário, o tipo de produção em listas construídas com as opções reais do
+  SISAB; o progresso é mostrado no console
+- **Visualizar Parquet:** escolha o arquivo no Explorador do Windows e veja
+  as primeiras 100 linhas no RStudio
+- **Ver status:** consulte downloads concluídos, pendentes e com erro
+
+**Não é necessário executar `sisab_instalar_motor()` separadamente.**
+No primeiro download, o programa cria um ambiente Python próprio e instala o
+motor automaticamente; quando detectar uma versão antiga do motor, atualiza-a
+sem alterar o Python utilizado por PySUS ou outros programas. Para baixar,
+você ainda precisa ter **Python 3.10+ e Git** instalados no computador.
+Para apenas visualizar um Parquet, o programa instala os pacotes R
+`arrow` e `dplyr` na primeira utilização, caso estejam ausentes.
+
+**Prefere digitar comandos?** Também funciona sem menu:
+
+```r
+library(sisabextrator)
+sisab_baixar(
+  inicio = "202401", fim = "202401",
+  relatorio = "municipal", linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual",
+  idades = "none", sexos = "none"
+)
+```
+
+O filtro `tipo_producao` acima é **somente um exemplo** e deve ser
+compatível com o recorte da pesquisa; no menu, você escolhe uma das opções
+realmente oferecidas pelo portal. A disponibilidade do CSV depende do SISAB,
+e o download ainda precisa ser validado na página real para cada combinação.
+
+Para abrir um arquivo sem o menu:
+
+```r
+sisab_visualizar() # abre o seletor de arquivos .parquet
+```
+
+Os exemplos avançados e o diagnóstico de erros continuam nas seções abaixo.
 
 ## O que ele faz?
 
@@ -155,15 +214,17 @@ Caso o RStudio não consiga acessar a API do GitHub, uma alternativa é `remotes
 
 O R é a interface para usar o projeto. **A coleta dos dados é feita em Python**, portanto você precisará de **Python 3.10+ e Git** no computador.
 
-Depois de instalar o pacote R, execute uma vez:
+Para quem utiliza **`sisab()`**, **`sisab_baixar()`**, `sisab_inspecionar()` ou
+`sisab_planejar()`, a instalação do motor Python é **automática no primeiro uso**.
+O SISAB Extrator cria um ambiente Python exclusivo, instala as bibliotecas
+necessárias e o atualiza quando está abaixo da versão mínima exigida.
+Isso evita conflitos com PySUS e outras ferramentas do computador.
+
+A instalação manual continua disponível como opção avançada:
 
 ```r
 sisab_instalar_motor()
 ```
-
-**Pronto!** O SISAB Extrator cria automaticamente um **ambiente Python exclusivo**
-e instala nele suas próprias bibliotecas. Isso evita conflitos com o **PySUS**
-e com outras ferramentas instaladas no seu computador.
 
 Para inspecionar, planejar e baixar dados, você não precisa configurar caminhos
 nem indicar `python = ...`: as funções R usam esse ambiente automaticamente.
@@ -208,7 +269,7 @@ system2(
 
 | Componente | Versão |
 |---|---|
-| Pacote R `sisabextrator` | **0.2.3** |
+| Pacote R `sisabextrator` | **0.3.0** |
 | Motor Python `sisab-extrator` | **0.1.6** |
 
 No resultado do Python, procure a linha `Version: 0.1.6`. Não é necessário
@@ -216,9 +277,10 @@ digitar o caminho do Python: o próprio código o descobre.
 
 Se o pacote **R** estiver antigo, atualize pelo procedimento do passo 1,
 reinicie a sessão do R e carregue `library(sisabextrator)` novamente.
-Se apenas o motor **Python** estiver antigo, execute
-`sisab_instalar_motor(atualizar = TRUE)`. Se o ambiente Python isolado ainda
-não existir, execute primeiro `sisab_instalar_motor()`.
+Se apenas o motor **Python** estiver antigo ou ainda não instalado,
+basta executar `sisab()` ou `sisab_baixar()`: o programa fará a preparação
+automática antes de acessar o portal. Também é possível executar manualmente
+`sisab_instalar_motor(atualizar = TRUE)` se preferir.
 
 **O que você precisa preencher de fato:** ao baixar dados, escolha o período,
 o relatório e os filtros adequados à pesquisa, especialmente
@@ -241,7 +303,7 @@ Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
 ## Primeiro download
 
-**Atualização importante (R 0.2.3 / motor Python 0.1.6):** o SISAB exige
+**Filtro obrigatório (R 0.3.0 / motor Python 0.1.6):** o SISAB exige
 que a variável **Tipo de Produção** esteja na linha/coluna ou que pelo
 menos uma opção seja escolhida nesse filtro. A opção `CIAP/CID`
 não substitui esse filtro. Por isso, nas consultas abaixo usamos
@@ -339,11 +401,12 @@ enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
 Para receber o progresso detalhado e o filtro Tipo de Produção, use
-o pacote R **0.2.3** e atualize o motor Python para **0.1.6**:
+o pacote R **0.3.0** (o motor Python 0.1.6 será instalado ou atualizado
+automaticamente no primeiro uso):
 
 ```r
 library(sisabextrator)
-sisab_instalar_motor(atualizar = TRUE)
+sisab() # ou sisab_baixar(...) para usar os argumentos diretamente
 ```
 
 O console agora mostra **FASE 1/4** (identificar filtros),
