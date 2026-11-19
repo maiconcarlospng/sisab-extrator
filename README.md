@@ -35,21 +35,33 @@ A ideia é reduzir o trabalho manual de baixar muitos arquivos do portal e facil
 > [!IMPORTANT]
 > **Projeto experimental.** O pacote e sua organização de dados foram desenvolvidos e testados, mas a extração nos formulários reais do SISAB ainda precisa ser validada. As opções disponíveis dependem do portal. **Não são microdados de pacientes.**
 
-## Comece aqui — instalação e uso em poucos comandos
+## Comece aqui — instale pelo R-universe e use
 
-No **RStudio**, instale o pacote R uma vez:
-
-```r
-if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
-remotes::install_git("https://github.com/maiconcarlospng/sisab-extrator.git", upgrade = "never")
-```
-
-Reinicie a sessão do R (menu **Session → Restart R**) e use apenas:
+**Instalação recomendada: R-universe.** No console do RStudio, execute:
 
 ```r
+install.packages(
+  "sisabextrator",
+  repos = c(
+    "https://maiconcarlospng.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+
 library(sisabextrator)
 sisab()
 ```
+
+Pronto: **`sisab()` abre o menu para baixar dados, visualizar Parquets ou
+consultar o status.** No primeiro download, o pacote prepara o motor Python
+automaticamente, sem exigir uma segunda instalação manual.
+
+**Já tinha uma versão instalada?** Reinicie a sessão do RStudio depois de
+atualizar e confira `packageVersion("sisabextrator")`. O menu `sisab()`
+está disponível a partir da versão **0.3.0**. Se o R-universe ainda
+oferecer uma versão anterior ou não localizar o pacote, use a
+[alternativa pelo GitHub](#instala%C3%A7%C3%A3o-no-rstudio) indicada abaixo:
+não é necessário aguardar a publicação para usar a versão mais recente.
 
 O comando **`sisab()` abre um menu** com estas escolhas:
 
@@ -182,9 +194,11 @@ SISAB não são necessários; basta R e `arrow`.
 
 ## Instalação no RStudio
 
-### 1. Instale o pacote R
+### Opção recomendada: R-universe
 
-**Pelo R-universe**, quando o pacote estiver listado na [página de publicação](https://maiconcarlospng.r-universe.dev/):
+O pacote R pode ser instalado pelo repositório
+[maiconcarlospng.r-universe.dev](https://maiconcarlospng.r-universe.dev/).
+Execute apenas:
 
 ```r
 install.packages(
@@ -196,21 +210,42 @@ install.packages(
 )
 
 library(sisabextrator)
+sisab()
 ```
 
-> **Ainda não encontrou o pacote?** A primeira compilação do R-universe pode levar cerca de uma hora. Uma compilação aprovada no GitHub não significa que ele já esteja disponível no R-universe. Veja a [orientação oficial](https://docs.r-universe.dev/publish/set-up.html#wait-first-build).
+**Como saber se a versão está atualizada?** Execute
+`packageVersion("sisabextrator")`. A versão com menu simplificado é a
+**0.3.0**. Como o R-universe compila e publica independentemente do GitHub,
+uma versão nova pode ainda não aparecer no repositório; a existência do
+pacote no R-universe não garante que a última versão já esteja publicada.
 
-**Alternativa pelo GitHub:**
+### Alternativa: GitHub (se o R-universe estiver desatualizado)
+
+Se a versão disponível for anterior à 0.3.0, ou se a instalação pelo
+R-universe falhar, instale diretamente do GitHub:
 
 ```r
-install.packages("remotes")
-remotes::install_github("maiconcarlospng/sisab-extrator")
-library(sisabextrator)
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+remotes::install_git(
+  "https://github.com/maiconcarlospng/sisab-extrator.git",
+  upgrade = "never"
+)
 ```
 
-Caso o RStudio não consiga acessar a API do GitHub, uma alternativa é `remotes::install_git("https://github.com/maiconcarlospng/sisab-extrator.git")`, desde que o programa Git esteja instalado.
+Depois de atualizar um pacote que já estava carregado, reinicie a sessão
+(**Session → Restart R**) e execute:
 
-### 2. Prepare o motor de downloads
+```r
+library(sisabextrator)
+sisab()
+```
+
+A instalação pelo GitHub requer o Git no computador. **Você não precisa
+usar os dois métodos:** escolha R-universe ou GitHub.
+
+### Motor Python: automático no primeiro download
 
 O R é a interface para usar o projeto. **A coleta dos dados é feita em Python**, portanto você precisará de **Python 3.10+ e Git** no computador.
 
@@ -235,12 +270,11 @@ Para atualizar o motor depois:
 sisab_instalar_motor(atualizar = TRUE)
 ```
 
-> **Para quem já usava uma versão anterior:** atualize primeiro o pacote R para
-> a versão **0.2.1 ou superior** (pelo R-universe, quando disponível, ou pelo
-> GitHub). As versões anteriores instalavam o motor no Python compartilhado.
-> A partir da versão 0.2.1, o ambiente próprio é o padrão.
+> **Se você já utilizava uma versão antiga:** instale o pacote R **0.3.0**,
+> reinicie a sessão do RStudio e use `sisab()`. O motor Python continua em um
+> ambiente isolado para evitar conflitos com PySUS.
 
-### 3. Confira se o pacote R e o motor Python estão atualizados
+### Opcional: conferir versões instaladas
 
 **Não é preciso preencher nada:** copie e execute este código no Console do RStudio
 depois da instalação. Ele mostra a versão do pacote R e a versão do motor Python
@@ -275,7 +309,7 @@ system2(
 No resultado do Python, procure a linha `Version: 0.1.6`. Não é necessário
 digitar o caminho do Python: o próprio código o descobre.
 
-Se o pacote **R** estiver antigo, atualize pelo procedimento do passo 1,
+Se o pacote **R** estiver antigo, atualize pelo R-universe ou GitHub conforme as opções acima,
 reinicie a sessão do R e carregue `library(sisabextrator)` novamente.
 Se apenas o motor **Python** estiver antigo ou ainda não instalado,
 basta executar `sisab()` ou `sisab_baixar()`: o programa fará a preparação
