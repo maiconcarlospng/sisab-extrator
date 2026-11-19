@@ -204,6 +204,31 @@ O modo `auto` consulta o intervalo de competências oferecido pelo portal. **Rev
 
 Depois de confirmar o plano, use `sisab_baixar()` com os mesmos parâmetros. Ao concluir os downloads, a ferramenta tenta consolidar os arquivos por ano e, por fim, pelo período completo. Se houver consultas pendentes ou com erro, a consolidação completa é bloqueada para evitar uma série incompleta apresentada como definitiva.
 
+## 🛠️ Se aparecer “Campos não encontrados”
+
+Esse erro indica que o motor recebeu uma página do SISAB, mas não conseguiu
+identificar os filtros esperados. **Não é um erro de instalação do pacote R.**
+
+Atualize o motor Python e faça uma nova inspeção:
+
+```r
+sisab_instalar_motor(atualizar = TRUE)
+sisab_inspecionar(relatorio = "federal")
+# Ou: sisab_inspecionar(relatorio = "municipal")
+```
+
+Se continuar falhando, a versão atualizada salva automaticamente um
+**diagnóstico sem dados sensíveis** em `data/inspecao/diagnostico_federal.json`
+ou `data/inspecao/diagnostico_municipal.json`. O arquivo informa qual página
+foi recebida, o título e os nomes dos campos HTML, sem copiar
+cookies, valores de campos ou a página inteira. Você pode anexá-lo a uma
+[Issue](https://github.com/maiconcarlospng/sisab-extrator/issues)
+para ajudar a adaptar o extrator se a estrutura do SISAB tiver mudado.
+
+O aviso `RequestsDependencyWarning` sobre versões de bibliotecas Python é
+**separado** desse erro. Pode exigir ajuste das dependências do Python,
+mas não significa que os filtros do SISAB foram encontrados.
+
 ## Perguntas frequentes
 
 <details>
