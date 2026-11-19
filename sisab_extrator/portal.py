@@ -5,11 +5,13 @@ filtro: ele pode ser apenas uma opção em 'Coluna'.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 import random
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -87,30 +89,57 @@ class Page:
         }
 
 
+def _field_identifier(value: str) -> str:
+    """Compara identificadores JSF com/sem acento ou separadores."""
+    value = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(ch for ch in value if ch.isalnum() and not unicodedata.combining(ch))
+
+
 def _extract_field(form, *keys: str) -> Field | None:
-    for select in form.find_all("select"):
-        ident = select.get("id", "")
-        name = select.get("name", ident)
-        if any(k.casefold() in ident.casefold() or k.casefold() in name.casefold() for k in keys):
-            return Field(
-                name=name,
-                id=ident,
-                options={o.get("value", ""): o.get_text(" ", strip=True) for o in select.find_all("option")},
-            )
+    # Prioriza nomes específicos (ex.: selectLinha) antes de aliases (linha).
+    for key in keys:
+        needle = _field_identifier(key)
+        for select in form.find_all("select"):
+            ident = select.get("id", "")
+            name = select.get("name", ident)
+            if needle in _field_identifier(ident) or needle in _field_identifier(name):
+                return Field(
+                    name=name,
+                    id=ident,
+                    options={o.get("value", ""): o.get_text(" ", strip=True)
+                             for o in select.find_all("option")},
+                )
     return None
 
 
 def parse_page(html: str, report_url: str) -> Page:
     check_url(report_url)
     soup = BeautifulSoup(html, "html.parser")
-    form = next((f for f in soup.find_all("form") if f.find("input", attrs={"name": "javax.faces.ViewState"})), None)
-    if form is None:
-        raise PortalError("Formulário com javax.faces.ViewState não encontrado. O SISAB pode ter mudado.")
+    forms = [f for f in soup.find_all("form")
+             if f.find("input", attrs={"name": "javax.faces.ViewState"})]
+    if not forms:
+        title = soup.title.get_text(" ", strip=True)[:120] if soup.title else "(sem título)"
+        raise PortalError(
+            f"Formulário do relatório com ViewState não encontrado; título recebido: {title!r}. "
+            "A página pode ser de login, erro ou ter mudado."
+        )
+
+    def form_score(f):
+        selects = f.find_all("select")
+        has_comp = _extract_field(f, "competencia", "competência") is not None
+        has_linha = _extract_field(f, "selectLinha", "linha") is not None
+        has_coluna = _extract_field(f, "selectcoluna", "coluna") is not None
+        return (int(has_comp) + int(has_linha) + int(has_coluna),
+                len(selects))
+
+    # Algumas páginas têm mais de um form JSF. O primeiro pode não ser o
+    # relatório; escolha o que contém mais campos relevantes.
+    form = max(forms, key=form_score)
     view = form.find("input", attrs={"name": "javax.faces.ViewState"})
     if not view.get("value"):
-        raise PortalError("ViewState ausente.")
+        raise PortalError("ViewState ausente no formulário do relatório.")
 
-    comp = _extract_field(form, "competencia")
+    comp = _extract_field(form, "competencia", "competência")
     if comp is None:
         for select in form.find_all("select"):
             opts = select.find_all("option")
@@ -119,11 +148,16 @@ def parse_page(html: str, report_url: str) -> Page:
                 comp = Field(select.get("name", select.get("id", "")), select.get("id", ""),
                              {o.get("value", ""): o.get_text(" ", strip=True) for o in opts})
                 break
-    linha = _extract_field(form, "selectLinha")
-    coluna = _extract_field(form, "selectcoluna")
+    linha = _extract_field(form, "selectLinha", "linha")
+    coluna = _extract_field(form, "selectcoluna", "coluna")
     if not comp or not linha or not coluna:
-        missing = [name for name, obj in [("competência", comp), ("selectLinha", linha), ("selectcoluna", coluna)] if obj is None]
-        raise PortalError("Campos não encontrados: " + ", ".join(missing) + ". Execute 'probe' e verifique a página.")
+        missing = [name for name, obj in [("competência", comp), ("linha", linha), ("coluna", coluna)] if obj is None]
+        names = [s.get("id", s.get("name", "")) for s in form.find_all("select")][:15]
+        raise PortalError(
+            "Campos não encontrados: " + ", ".join(missing) +
+            f". Campos select presentes no formulário: {names!r}. "
+            "O formulário real pode ter mudado ou depender de JavaScript."
+        )
 
     button = ""
     for a in form.find_all("a"):
@@ -165,9 +199,35 @@ def sniff_csv(content: bytes) -> bool:
     return any(sep in sample for sep in (b"Uf;Ibge;Municipio;", b"Uf;Ibge;Munic", b";"))
 
 
+def _diagnostic_response(response, requested_url: str) -> dict:
+    """Dados seguros para depurar o HTML recebido, sem cookies e valores de campos."""
+    soup = BeautifulSoup(response.text, "html.parser")
+    final_url = urlparse(getattr(response, "url", requested_url))
+    return {
+        "url_solicitada": requested_url,
+        "url_recebida": final_url._replace(query="", fragment="").geturl(),
+        "status_http": getattr(response, "status_code", None),
+        "tipo_conteudo": response.headers.get("Content-Type", ""),
+        "titulo_pagina": soup.title.get_text(" ", strip=True)[:160] if soup.title else "",
+        "formularios": [
+            {"id": f.get("id", ""), "name": f.get("name", ""),
+             "quantidade_selects": len(f.find_all("select"))}
+            for f in soup.find_all("form")[:15]
+        ],
+        "selects": [
+            {"id": s.get("id", ""), "name": s.get("name", ""),
+             "quantidade_opcoes": len(s.find_all("option"))}
+            for s in soup.find_all("select")[:60]
+        ],
+        "aviso": ("O diagnóstico não inclui cookies, ViewState, texto completo "
+                  "da página ou valores de campos.")
+    }
+
+
 class Client:
     def __init__(self, url: str, delay: float = 2.0, timeout: int = 900,
-                 retries: int = 6, backoff: float = 5.0):
+                 retries: int = 6, backoff: float = 5.0,
+                 diagnostics_dir: Path | None = None):
         self.url = check_url(url)
         self.delay = max(delay, 0)
         self.timeout = timeout
@@ -176,6 +236,7 @@ class Client:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "sisab-extrator/0.1 (pesquisa; acesso a relatorios publicos)"})
         self.page: Page | None = None
+        self.diagnostics_dir = Path(diagnostics_dir) if diagnostics_dir is not None else None
 
     def __enter__(self):
         return self
@@ -204,8 +265,27 @@ class Client:
     def open(self) -> Page:
         resp = self._request("GET", self.url)
         resp.encoding = resp.encoding or "utf-8"
-        self.page = parse_page(resp.text, self.url)
-        return self.page
+        try:
+            self.page = parse_page(resp.text, self.url)
+            return self.page
+        except PortalError as exc:
+            message = str(exc)
+            if self.diagnostics_dir is not None:
+                try:
+                    self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+                    part = urlparse(self.url).path
+                    label = "federal" if "/federal/" in part else (
+                        "municipal" if "/municipio/" in part else "personalizado")
+                    target = self.diagnostics_dir / f"diagnostico_{label}.json"
+                    target.write_text(
+                        json.dumps(_diagnostic_response(resp, self.url),
+                                   indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    message += f" Diagnóstico da página recebido em: {target}."
+                except OSError as write_exc:
+                    message += f" Não foi possível gravar diagnóstico: {write_exc}."
+            raise PortalError(message) from exc
 
     def download(self, job: Job) -> bytes:
         page = self.page or self.open()
