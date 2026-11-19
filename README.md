@@ -214,14 +214,14 @@ sisab()
 ```
 
 **Como saber se a versão está atualizada?** Execute
-`packageVersion("sisabextrator")`. A versão com menu simplificado é a
-**0.3.0**. Como o R-universe compila e publica independentemente do GitHub,
+`packageVersion("sisabextrator")`. A versão com menu simplificado começou na **0.3.0**; a versão
+atual deste código é a **0.3.1**. Como o R-universe compila e publica independentemente do GitHub,
 uma versão nova pode ainda não aparecer no repositório; a existência do
 pacote no R-universe não garante que a última versão já esteja publicada.
 
 ### Alternativa: GitHub (se o R-universe estiver desatualizado)
 
-Se a versão disponível for anterior à 0.3.0, ou se a instalação pelo
+Se a versão disponível for anterior à 0.3.1, ou se a instalação pelo
 R-universe falhar, instale diretamente do GitHub:
 
 ```r
@@ -270,7 +270,7 @@ Para atualizar o motor depois:
 sisab_instalar_motor(atualizar = TRUE)
 ```
 
-> **Se você já utilizava uma versão antiga:** instale o pacote R **0.3.0**,
+> **Se você já utilizava uma versão antiga:** instale o pacote R **0.3.1**,
 > reinicie a sessão do RStudio e use `sisab()`. O motor Python continua em um
 > ambiente isolado para evitar conflitos com PySUS.
 
@@ -303,10 +303,10 @@ system2(
 
 | Componente | Versão |
 |---|---|
-| Pacote R `sisabextrator` | **0.3.0** |
-| Motor Python `sisab-extrator` | **0.1.6** |
+| Pacote R `sisabextrator` | **0.3.1** |
+| Motor Python `sisab-extrator` | **0.1.7** |
 
-No resultado do Python, procure a linha `Version: 0.1.6`. Não é necessário
+No resultado do Python, procure a linha `Version: 0.1.7`. Não é necessário
 digitar o caminho do Python: o próprio código o descobre.
 
 Se o pacote **R** estiver antigo, atualize pelo R-universe ou GitHub conforme as opções acima,
@@ -337,7 +337,7 @@ Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
 ## Primeiro download
 
-**Filtro obrigatório (R 0.3.0 / motor Python 0.1.6):** o SISAB exige
+**Filtro obrigatório (R 0.3.1 / motor Python 0.1.7):** o SISAB exige
 que a variável **Tipo de Produção** esteja na linha/coluna ou que pelo
 menos uma opção seja escolhida nesse filtro. A opção `CIAP/CID`
 não substitui esse filtro. Por isso, nas consultas abaixo usamos
@@ -435,7 +435,7 @@ enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
 Para receber o progresso detalhado e o filtro Tipo de Produção, use
-o pacote R **0.3.0** (o motor Python 0.1.6 será instalado ou atualizado
+o pacote R **0.3.1** (o motor Python 0.1.7 será instalado ou atualizado
 automaticamente no primeiro uso):
 
 ```r
@@ -661,11 +661,45 @@ Isso corrige o **envio de um filtro obrigatório conhecido**. Ainda não prova
 que a combinação completa de filtros seja aceita pelo SISAB ou que o
 CSV esteja disponível, pois a extração real requer validação após a atualização.
 
+### Quando o console repete "HTML em vez de CSV"
+
+O SISAB pode responder **HTTP 200** com uma página de formulário em vez do
+arquivo CSV solicitado, mesmo após a seleção de `tipo_producao`. Isso não
+indica sucesso no download. A partir do **motor Python 0.1.7**:
+
+- Se o portal mostrar **uma mensagem de validação** (por exemplo, um filtro
+  obrigatório ausente), o console mostra o texto real e **não tenta novamente**
+  com os mesmos filtros.
+- Se não houver uma mensagem visível, o extrator encerra após **duas respostas
+  HTML consecutivas com as mesmas características**, mesmo que você tenha
+  configurado seis novas tentativas. As tentativas de rede continuam
+  disponíveis para falhas transitórias.
+- O JSON `data/inspecao/diagnostico_exportacao_municipal.json` contém o campo
+  `mensagens_portal`, que ajuda a identificar o ajuste necessário.
+
+Se estiver executando uma **versão antiga** e observar vários avisos iguais
+de exportação HTML, interrompa a execução no RStudio com **Esc**. Para
+ver a mensagem de validação do diagnóstico que já existe:
+
+```r
+arquivo <- file.path("data", "inspecao", "diagnostico_exportacao_municipal.json")
+if (file.exists(arquivo)) {
+  diagnostico <- jsonlite::fromJSON(arquivo)
+  print(diagnostico$mensagens_portal)
+}
+```
+
+**Importante:** isso evita repetir erros, mas não garante que a combinação
+`Município × CIAP/CID × Tipo de Produção` seja aceita pelo portal. O
+conteúdo de `mensagens_portal` orientará o próximo ajuste.
+
 ### Quando o SISAB responde com HTML, mas não entrega CSV
 
 Um `HTTP 200` significa que o servidor respondeu, **não que o CSV tenha sido
-gerado**. Para evitar tentativas desnecessárias, faça apenas uma exportação de
-diagnóstico após atualizar o motor Python para **0.1.3**:
+gerado**. A partir do motor Python **0.1.7**, o extrator mostra as mensagens de
+validação do SISAB imediatamente e interrompe tentativas repetidas de
+exportação que não podem ser resolvidas sem mudar os filtros. Se o portal
+continuar recusando a consulta, abra o JSON de diagnóstico:
 
 ```r
 sisab_instalar_motor(atualizar = TRUE)
