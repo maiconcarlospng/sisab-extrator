@@ -661,6 +661,51 @@ Isso corrige o **envio de um filtro obrigatório conhecido**. Ainda não prova
 que a combinação completa de filtros seja aceita pelo SISAB ou que o
 CSV esteja disponível, pois a extração real requer validação após a atualização.
 
+### Quando o SISAB exige selecionar CIAP/CID
+
+Uma exportação municipal com **Linha = Município**, **Coluna = CIAP/CID**
+e **Tipo de Produção = Atendimento Individual** retornou a mensagem real:
+
+> Por favor, selecione, pelo menos uma opção para o item CIAP/CID.
+
+Isso confirma que escolher `CIAP/CID` na coluna **não basta**: o relatório
+também espera ao menos um código ou grupo **no filtro CIAP/CID**.
+O extrator **ainda não implementa essa seleção**, porque precisamos
+identificar como o formulário JSF envia os itens escolhidos. Não use
+`tipo_producao` como substituto de CIAP/CID e não continue tentando o
+mesmo download sem alterar a seleção.
+
+**Para inspecionar os controles CIAP/CID sem iniciar downloads:**
+
+```r
+library(sisabextrator)
+sisab_inspecionar(relatorio = "municipal")
+
+# A inspeção salva os metadados públicos do formulário no JSON.
+inspecao <- jsonlite::fromJSON(
+  file.path("data", "inspecao", "municipal.json"),
+  simplifyVector = FALSE
+)
+
+campos_ciap <- Filter(
+  function(campo) {
+    grepl(
+      "ciap|cid|lsCid",
+      paste(campo$id, campo$name),
+      ignore.case = TRUE
+    )
+  },
+  inspecao$outros_campos
+)
+
+cat(jsonlite::toJSON(campos_ciap, pretty = TRUE, auto_unbox = TRUE))
+```
+
+O resultado revela nomes e tipos dos campos detectáveis no HTML inicial,
+mas **não necessariamente os códigos selecionáveis**: o portal pode
+carregá-los por JavaScript/AJAX. É preciso confirmar esse mecanismo antes
+de adicionar o parâmetro de seleção e o menu para CIAP/CID.
+
 ### Quando o console repete "HTML em vez de CSV"
 
 O SISAB pode responder **HTTP 200** com uma página de formulário em vez do
