@@ -13,17 +13,17 @@
 \description{Controla o motor Python e permite consultar datasets Parquet de forma preguiçosa com Arrow.}
 \usage{
 sisab_instalar_motor(python = "python", atualizar = FALSE)
-sisab_inspecionar(relatorio = "federal", dados = "data", python = "python")
-sisab_planejar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, pausa = 2, python = "python")
-sisab_baixar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "python")
-sisab_consolidar(inicio, fim, dados = "data", permitir_parcial = FALSE, python = "python")
-sisab_status(inicio = NULL, fim = NULL, dados = "data", python = "python")
+sisab_inspecionar(relatorio = "federal", dados = "data", python = "auto")
+sisab_planejar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, pausa = 2, python = "auto")
+sisab_baixar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "auto")
+sisab_consolidar(inicio, fim, dados = "data", permitir_parcial = FALSE, python = "auto")
+sisab_status(inicio = NULL, fim = NULL, dados = "data", python = "auto")
 sisab_abrir_anuais(dados = "data", ano = NULL)
 sisab_abrir_serie(inicio, fim, dados = "data")
 sisab_filtrar_mg(ds)
 }
 \arguments{
-\item{python}{Executável Python que contém o motor de extração.}
+\item{python}{Ao instalar o motor, nome ou caminho do Python de base (padrão "python"). Nas funções de extração, "auto" utiliza o Python exclusivo criado por \code{sisab_instalar_motor()}; também é possível indicar um executável manualmente.}
 \item{atualizar}{Se verdadeiro, atualiza o motor Python.}
 \item{relatorio}{Relatório federal, municipal ou all.}
 \item{dados}{Diretório de trabalho dos arquivos de dados.}
@@ -39,4 +39,4 @@ sisab_filtrar_mg(ds)
 \item{ds}{Dataset Arrow retornado pelas funções de leitura.}
 }
 \value{As operações de extração retornam invisivelmente TRUE; as funções de leitura retornam um Dataset Arrow, sem materializar todas as linhas na memória.}
-\details{Este pacote R é uma interface para o motor Python do mesmo repositório. Requer sua instalação separada. Trabalha com dados públicos agregados do SISAB, não microdados individuais.}
+\details{Este pacote R é uma interface para o motor Python. Execute \code{sisab_instalar_motor()} uma vez para instalar o motor em um ambiente virtual exclusivo e evitar conflitos com PySUS e outras bibliotecas Python. A extração usa esse ambiente automaticamente; o Python principal permanece inalterado. Trabalha com dados públicos agregados do SISAB, não microdados individuais.}
