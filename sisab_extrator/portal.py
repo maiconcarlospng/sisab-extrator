@@ -229,7 +229,9 @@ def _diagnostic_response(response, requested_url: str) -> dict:
         "url_recebida": _safe_url(getattr(response, "url", requested_url)),
         "status_http": getattr(response, "status_code", None),
         "tipo_conteudo": response.headers.get("Content-Type", ""),
-        "tamanho_bytes": len(response.content),
+        "tamanho_bytes": len(
+            getattr(response, "content", response.text.encode("utf-8"))
+        ),
         "titulo_pagina": soup.title.get_text(" ", strip=True)[:160] if soup.title else "",
         "mensagens_portal": warnings,
         "formularios": [
