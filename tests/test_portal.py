@@ -95,3 +95,58 @@ def test_bad_html_creates_safe_diagnostic_file(tmp_path):
     assert diagnostic["formularios"][0]["id"] == "login"
     assert "SECRET" not in json.dumps(diagnostic)
     assert "sensitive" not in json.dumps(diagnostic)
+
+
+def test_html_instead_of_csv_writes_export_diagnostic(tmp_path):
+    """Uma página HTTP 200 não deve ser confundida com CSV exportado."""
+    import json
+    from sisab_extrator.portal import Client
+    from test_model import example_job
+
+    class Response:
+        url = URL + "?session_token=SECRET"
+        status_code = 200
+        headers = {"Content-Type": "text/html;charset=UTF-8"}
+        text = (
+            "<html><head><title>Relatório SISAB</title></head><body>"
+            "<div class='ui-messages-error-summary'>Selecione um filtro válido.</div>"
+            "<form id='j_idt44'>"
+            "<input type='hidden' name='javax.faces.ViewState' value='SECRET'>"
+            "<select name='selectcoluna' id='selectcoluna'><option>CID</option></select>"
+            "</form></body></html>"
+        )
+        content = text.encode("utf-8")
+
+    client = Client(URL, delay=0, retries=0, diagnostics_dir=tmp_path)
+    client.page = parse_page(HTML, URL)
+    client._request = lambda *args, **kwargs: Response()
+    with pytest.raises(PortalError, match="diagnostico_exportacao_federal.json"):
+        client.download(example_job(coluna="CID"))
+    diagnostic = json.loads(
+        (tmp_path / "diagnostico_exportacao_federal.json").read_text(encoding="utf-8")
+    )
+    assert diagnostic["operacao"] == "exportacao_csv"
+    assert diagnostic["tipo_conteudo"].startswith("text/html")
+    assert diagnostic["consulta"]["competencia"] == "202401"
+    assert diagnostic["consulta"]["coluna"] == "CIAP/CID"
+    assert diagnostic["campos_enviados"]["botao_csv"] == "j_idt99"
+    assert diagnostic["mensagens_portal"] == ["Selecione um filtro válido."]
+    assert diagnostic["url_recebida"] == URL
+    assert diagnostic["tamanho_bytes"] == len(Response.content)
+    assert "SECRET" not in json.dumps(diagnostic)
+
+
+def test_explicit_no_data_stays_no_data_without_diagnostic(tmp_path):
+    from sisab_extrator.portal import Client, NoData
+    from test_model import example_job
+
+    class Response:
+        content = "A consulta não retornou nenhum dado".encode("utf-8")
+        headers = {"Content-Type": "text/html"}
+
+    client = Client(URL, delay=0, retries=0, diagnostics_dir=tmp_path)
+    client.page = parse_page(HTML, URL)
+    client._request = lambda *args, **kwargs: Response()
+    with pytest.raises(NoData):
+        client.download(example_job())
+    assert not list(tmp_path.glob("diagnostico_exportacao_*.json"))
