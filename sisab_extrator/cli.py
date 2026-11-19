@@ -86,12 +86,13 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
     ]
     if not sexes:
         raise ValueError("Sexo inválido")
-    has_production_dimension = any(
-        "tipodeproducao" in _field_identifier(label)
-        for _, label in (linhas + colunas)
+    requires_production_filter = any(
+        "tipodeproducao" not in _field_identifier(row_label)
+        and "tipodeproducao" not in _field_identifier(col_label)
+        for _, row_label in linhas for _, col_label in colunas
     )
     if args.production_type == "none":
-        if page.tipo_producao is not None and not has_production_dimension:
+        if page.tipo_producao is not None and requires_production_filter:
             choices = [label for value, label in page.tipo_producao.options.items()
                        if value]
             raise ValueError(
