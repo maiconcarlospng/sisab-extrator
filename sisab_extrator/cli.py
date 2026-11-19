@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .model import AGE_GROUPS, REPORT_URLS, SEXES, Job, months, parse_month
-from .portal import Client, NoData, Page, PortalError
+from .portal import Client, NoData, Page, PortalError, _field_identifier
 from .storage import Catalog, parquet_path, raw_path, save_raw_zip
 
 LOG = logging.getLogger("sisab_extrator")
@@ -28,18 +28,22 @@ class Prepared:
     colunas: list[tuple[str, str]]
     idades: list[tuple[str, int, int, str]]
     sexos: list[tuple[str, str]]
+    tipos_producao: list[tuple[str, str]]
 
     @property
     def count(self) -> int:
-        return len(self.competencias) * len(self.linhas) * len(self.colunas) * len(self.idades) * len(self.sexos)
+        return (len(self.competencias) * len(self.linhas) * len(self.colunas)
+                * len(self.idades) * len(self.sexos) * len(self.tipos_producao))
 
     def jobs(self) -> Iterator[Job]:
-        for comp, linha, coluna, age, sexo in product(
-            self.competencias, self.linhas, self.colunas, self.idades, self.sexos
+        for comp, linha, coluna, age, sexo, producao in product(
+            self.competencias, self.linhas, self.colunas, self.idades,
+            self.sexos, self.tipos_producao,
         ):
             yield Job(self.name, self.page.report_url, comp,
                       linha[0], linha[1], coluna[0], coluna[1],
-                      age[0], age[1], age[2], age[3], sexo[0], sexo[1])
+                      age[0], age[1], age[2], age[3], sexo[0], sexo[1],
+                      producao[0], producao[1])
 
 
 def selected_reports(args) -> dict[str, str]:
@@ -82,7 +86,31 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
     ]
     if not sexes:
         raise ValueError("Sexo inválido")
-    return Prepared(name, client, page, comps, linhas, colunas, ages, sexes)
+    has_production_dimension = any(
+        "tipodeproducao" in _field_identifier(label)
+        for _, label in (linhas + colunas)
+    )
+    if args.production_type == "none":
+        if page.tipo_producao is not None and not has_production_dimension:
+            choices = [label for value, label in page.tipo_producao.options.items()
+                       if value]
+            raise ValueError(
+                f"{name}: o SISAB exige Tipo de Produção para esta combinação de "
+                "linha/coluna. Informe tipo_producao em sisab_planejar()/sisab_baixar(). "
+                f"Escolha uma das opções: {choices!r}. "
+                "Não escolhemos automaticamente para evitar mudar o recorte da pesquisa."
+            )
+        production_types = [("", "")]
+    else:
+        if page.tipo_producao is None:
+            raise PortalError(
+                f"{name}: filtro Tipo de Produção não encontrado neste relatório."
+            )
+        production_types = page.tipo_producao.choose(args.production_type)
+        if not production_types:
+            raise ValueError("Nenhuma opção de Tipo de Produção disponível.")
+    return Prepared(name, client, page, comps, linhas, colunas, ages, sexes,
+                    production_types)
 
 
 def common(parser: argparse.ArgumentParser) -> None:
@@ -102,6 +130,8 @@ def add_filters(parser):
     parser.add_argument("--columns", default="all", help='Rótulo/valor da coluna, ex.: "CIAP/CID", ou all')
     parser.add_argument("--ages", default="all", help="all, none ou nome exato da faixa")
     parser.add_argument("--sexes", default="both", choices=["both", "none", "Masculino", "Feminino"])
+    parser.add_argument("--production-type", default="none",
+                        help="Filtro Tipo de Produção: rótulo/valor oferecido pelo SISAB, all ou none")
     parser.add_argument("--allow-large-plan", action="store_true", help="Aceita mais de 10 mil consultas")
 
 
@@ -114,6 +144,11 @@ def cmd_probe(args) -> int:
             path.write_text(json.dumps(page.as_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
             print(f"{name}: {path} | {len(page.competencia.options)} competências | "
                   f"{len(page.linha.options)} linhas | {len(page.coluna.options)} colunas")
+            if page.tipo_producao:
+                options = [(value, label) for value, label in
+                           page.tipo_producao.options.items() if value]
+                print("  Tipo de Produção disponível: " +
+                      ", ".join(f"{label} (valor {value})" for value, label in options))
     return 0
 
 
@@ -128,7 +163,8 @@ def prepared_reports(args):
                 prepared.append(p)
                 print(f"[{name}] {len(p.competencias)} competências × {len(p.linhas)} linhas × "
                       f"{len(p.colunas)} colunas × {len(p.idades)} idades × "
-                      f"{len(p.sexos)} sexos = {p.count} consultas")
+                      f"{len(p.sexos)} sexos × {len(p.tipos_producao)} tipos de produção"
+                      f" = {p.count} consultas")
             except Exception:
                 client.close()
                 raise
@@ -218,7 +254,9 @@ def cmd_download(args) -> int:
                     _log_download_step(
                         completed, count, stage,
                         f"{p.name} | mês {job.competencia} | linha {job.linha_label} | "
-                        f"coluna {job.coluna_label} | idade {job.faixa_etaria or 'sem filtro'} | "
+                        f"coluna {job.coluna_label} | tipo de produção "
+                        f"{job.tipo_producao_label or 'na dimensão/sem filtro'} | "
+                        f"idade {job.faixa_etaria or 'sem filtro'} | "
                         f"sexo {job.sexo or 'sem filtro'}",
                     )
                     if not source.exists() or args.force:
