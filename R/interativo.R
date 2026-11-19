@@ -153,7 +153,23 @@ sisab_visualizar <- function(arquivo = NULL, n = 100L) {
     }
   }
   dataset <- arrow::open_dataset(arquivo)
-  preview <- dplyr::collect(dplyr::slice_head(dataset, n = as.integer(n)))
+  # Suporta versoes diferentes de Arrow sem carregar o Parquet inteiro.
+  preview <- tryCatch(
+    dplyr::collect(dplyr::slice_head(dataset, n = as.integer(n))),
+    error = function(e) NULL
+  )
+  if (is.null(preview)) {
+    preview <- tryCatch(dplyr::collect(utils::head(dataset, n)),
+                        error = function(e) NULL)
+  }
+  if (is.null(preview) && file.info(arquivo)$size <= 50 * 1024^2) {
+    # Fallback apenas para arquivos pequenos, evitando usar RAM excessiva.
+    preview <- utils::head(arrow::read_parquet(arquivo), n)
+  }
+  if (is.null(preview)) {
+    stop("Nao foi possivel gerar a amostra do Parquet sem carregar um arquivo ",
+         "muito grande na memoria. Atualize arrow e dplyr.", call. = FALSE)
+  }
   message("Exibindo ate ", n, " linhas de ", basename(arquivo), ".")
   if (interactive()) utils::View(preview, title = basename(arquivo))
   invisible(preview)
