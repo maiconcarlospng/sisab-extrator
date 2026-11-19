@@ -338,7 +338,8 @@ class Client:
                     message += f" Não foi possível gravar diagnóstico: {write_exc}."
             raise PortalError(message) from exc
 
-    def _save_export_diagnostic(self, response, job: Job, page: Page) -> Path | None:
+    def _save_export_diagnostic(self, response, job: Job, page: Page,
+                                details: dict | None = None) -> Path | None:
         """Registra uma exportação que devolveu HTML; não grava payload nem CSV."""
         if self.diagnostics_dir is None:
             return None
@@ -346,7 +347,7 @@ class Client:
             self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
             filename = f"diagnostico_exportacao_{_diagnostic_label(self.url)}.json"
             target = self.diagnostics_dir / filename
-            info = _diagnostic_response(response, self.url)
+            info = (details or _diagnostic_response(response, self.url)).copy()
             info["operacao"] = "exportacao_csv"
             info["consulta"] = {
                 "competencia": job.competencia,
@@ -392,6 +393,7 @@ class Client:
                     f"Tipo de Produção {job.tipo_producao!r} não existe no formulário atual."
                 )
         error = None
+        previous_html_signature = None
         for attempt in range(self.retries + 1):
             page = self.page or self.open()
             # Recriar payload a cada tentativa: ViewState e nomes JSF podem mudar.
@@ -425,14 +427,43 @@ class Client:
             if "A consulta não retornou nenhum dado" in latin_text:
                 raise NoData(f"Consulta sem dados: {job.key}")
             content_type = response.headers.get("Content-Type", "")
-            diagnostic = self._save_export_diagnostic(response, job, page)
+            html_response = "html" in content_type.casefold() or (
+                b"<html" in response.content[:2000].lower()
+            )
+            details = _diagnostic_response(response, self.url) if html_response else None
+            diagnostic = self._save_export_diagnostic(response, job, page, details)
             diagnostic_text = f" Diagnóstico: {diagnostic}." if diagnostic else ""
+            messages = details.get("mensagens_portal", []) if details else []
+            if messages:
+                # Validacao do JSF: outra tentativa com os mesmos filtros nao resolve.
+                reason = "; ".join(messages)
+                error = (
+                    f"O SISAB rejeitou os filtros da consulta: {reason}."
+                    f"{diagnostic_text} Nao repetiremos esta consulta sem alterar os filtros."
+                )
+                LOG.error("Validacao do formulario: %s", reason)
+                raise PortalError(error)
             error = (
                 f"O SISAB respondeu à exportação, mas devolveu {content_type!r} "
                 f"em vez de CSV ({len(response.content)} bytes)."
                 f"{diagnostic_text} Verifique se o filtro escolhido exige "
                 "outra configuração no formulário."
             )
+            if html_response:
+                # O portal altera tokens JSF entre paginas, entao nao comparamos
+                # HTML inteiro. Duas respostas com mesmo tamanho/titulo/tipo
+                # ja sao um sinal suficiente para nao insistir sete vezes.
+                signature = (
+                    content_type.casefold(),
+                    len(response.content),
+                    details.get("titulo_pagina", "") if details else "",
+                )
+                if signature == previous_html_signature:
+                    raise PortalError(
+                        error + " Duas respostas HTML consecutivas tiveram as "
+                        "mesmas características; novas tentativas foram interrompidas."
+                    )
+                previous_html_signature = signature
             if attempt < self.retries:
                 LOG.warning("%s Nova tentativa em seguida.", error)
                 time.sleep(min(self.backoff * (2 ** attempt), 120) + random.random())
