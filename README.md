@@ -161,6 +161,39 @@ sisab_status()
 
 > **Antes dos passos 2 e 3:** confirme na inspeção se as opções **Município** e **CIAP/CID** realmente existem no relatório escolhido. Se os nomes ou cruzamentos forem diferentes, adapte o exemplo. O portal pode mudar e algumas consultas podem não ser aceitas.
 
+### Se o download demorar muito
+
+Desde o **pacote R 0.2.2 / motor Python 0.1.2**, o console informa
+quando o programa consulta o site, recebe o CSV, converte para Parquet e
+inicia a consolidação. Para identificar rapidamente um problema de rede,
+você pode limitar a espera por **inatividade de uma requisição**, sem desligar
+a pausa entre consultas nem sobrecarregar o portal:
+
+```r
+sisab_baixar(
+  inicio = "202401", fim = "202401",
+  relatorio = "municipal",
+  linhas = "Municipio", colunas = "CIAP/CID",
+  idades = "none", sexos = "none",
+  tempo_limite = 120, # segundos de inatividade tolerados pelo HTTP
+  tentativas = 1,     # uma nova tentativa após falha
+  consolidar = FALSE  # diagnosticar apenas download e conversão
+)
+```
+
+Isso **não acelera o processamento do SISAB**: pode encerrar uma resposta
+legitimamente lenta. Para coletas completas, mantenha os padrões conservadores
+(`tempo_limite = 900`, `tentativas = 6`, `pausa = 2`).
+
+O projeto [`rfsaldanha/sisab_scrapper`](https://github.com/rfsaldanha/sisab_scrapper)
+também usa formulários JSF, pausas e novas tentativas. Entretanto, ele
+separa os relatórios por **18 faixas etárias e 2 sexos (36 downloads por mês)**,
+enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
+SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
+
+O comando `sisab_status()` executado **após** `sisab_baixar()` só começa
+quando o download terminar (ou retornar erro).
+
 ## 📈 Analisando os dados no R
 
 Quando os Parquets já estiverem disponíveis:
