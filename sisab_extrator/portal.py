@@ -79,6 +79,7 @@ class Page:
     csv_button: str
     other_fields: list[dict]
     hidden_fields: list[tuple[str, str]]
+    tipo_producao: Field | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -88,6 +89,10 @@ class Page:
             "competencias": self.competencia.options,
             "linha": {"name": self.linha.name, "options": self.linha.options},
             "coluna": {"name": self.coluna.name, "options": self.coluna.options},
+            "tipo_producao": (
+                {"name": self.tipo_producao.name, "options": self.tipo_producao.options}
+                if self.tipo_producao else None
+            ),
             "outros_campos": self.other_fields,
             "botao_csv_identificado": bool(self.csv_button),
         }
@@ -192,8 +197,9 @@ def parse_page(html: str, report_url: str) -> Page:
 
     action = urljoin(report_url, form.get("action") or report_url)
     check_url(action)
+    tipo_producao = _extract_field(form, "tpProducao")
     return Page(report_url, action, form.get("id", ""), view["value"], comp, linha,
-                coluna, button, fields, hidden)
+                coluna, button, fields, hidden, tipo_producao=tipo_producao)
 
 
 def sniff_csv(content: bytes) -> bool:
@@ -346,6 +352,7 @@ class Client:
                 "competencia": job.competencia,
                 "linha": job.linha_label,
                 "coluna": job.coluna_label,
+                "tipo_producao": job.tipo_producao_label or job.tipo_producao,
                 "sexo": job.sexo,
                 "faixa_etaria": job.faixa_etaria,
             }
@@ -367,6 +374,23 @@ class Client:
         page = self.page or self.open()
         if job.competencia not in page.competencia.options:
             raise PortalError(f"Competência {job.competencia} não disponível no portal.")
+        if page.tipo_producao is not None:
+            is_production_dimension = any(
+                "tipodeproducao" in _field_identifier(label)
+                for label in (job.linha_label, job.coluna_label)
+            )
+            if not job.tipo_producao and not is_production_dimension:
+                available = [label for value, label in page.tipo_producao.options.items()
+                             if value]
+                raise PortalError(
+                    "O SISAB exige Tipo de Produção quando esta variável não está "
+                    "na linha/coluna. Informe tipo_producao no sisab_baixar(), "
+                    f"usando uma das opções apresentadas pelo portal: {available!r}."
+                )
+            if job.tipo_producao and job.tipo_producao not in page.tipo_producao.options:
+                raise PortalError(
+                    f"Tipo de Produção {job.tipo_producao!r} não existe no formulário atual."
+                )
         error = None
         for attempt in range(self.retries + 1):
             page = self.page or self.open()
@@ -382,7 +406,8 @@ class Client:
                 ("idadeInicio", str(job.idade_inicio)),
                 ("idadeFim", str(job.idade_fim)),
                 ("tpIdade", job.tp_idade),
-                ("tpProducao", ""),
+                (page.tipo_producao.name if page.tipo_producao else "tpProducao",
+                 job.tipo_producao),
                 (page.csv_button, page.csv_button),
             ]
             if job.sexo_valor:
