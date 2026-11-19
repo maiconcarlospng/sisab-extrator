@@ -213,9 +213,32 @@ Atualize o motor Python e faça uma nova inspeção:
 
 ```r
 sisab_instalar_motor(atualizar = TRUE)
+
+# Confira a versão do motor que o R está usando
+system2(Sys.which("python"), c("-m", "pip", "show", "sisab-extrator"))
+
 sisab_inspecionar(relatorio = "federal")
 # Ou: sisab_inspecionar(relatorio = "municipal")
 ```
+
+A versão Python corrigida é **0.1.1**. Se a saída do `pip show` ainda mostrar
+`Version: 0.1.0`, reinstale diretamente com o **mesmo Python do RStudio**:
+
+```r
+python <- Sys.which("python")
+stopifnot(nzchar(python))
+
+system2(python, c(
+  "-m", "pip", "install", "--force-reinstall", "--no-deps",
+  "git+https://github.com/maiconcarlospng/sisab-extrator.git"
+))
+
+system2(python, c("-m", "pip", "show", "sisab-extrator"))
+```
+
+Esse comando reinstala somente o motor `sisab-extrator`, preservando as
+bibliotecas Python já instaladas. Se a versão estiver correta, mas o erro
+persistir, consulte o arquivo de diagnóstico abaixo.
 
 Se continuar falhando, a versão atualizada salva automaticamente um
 **diagnóstico sem dados sensíveis** em `data/inspecao/diagnostico_federal.json`
