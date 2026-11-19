@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import os
 import tempfile
 import zipfile
@@ -16,6 +17,8 @@ from typing import Iterator
 
 from .model import Job, months
 from .storage import Catalog
+
+LOG = logging.getLogger("sisab_extrator.parquet")
 
 # Colunas geográficas históricas variam conforme a versão do relatório.
 # Não pressupomos que os nomes alternativos tenham sempre o mesmo significado:
@@ -309,16 +312,24 @@ def consolidate(catalog: Catalog, start: str, end: str,
         all_year = [r for r in catalog.rows(f"{year}01", f"{year}12") if r["status"] == "ok"]
         files = [Path(r["parquet_path"]) for r in all_year]
         if not files:
+            LOG.info("CONSOLIDAÇÃO anual | %s | nenhum arquivo concluído", year)
             annual[str(year)] = {"status": "sem_dados", "linhas": 0}
             continue
         target = catalog.root / "consolidado" / "anual" / f"sisab_{year}.parquet"
+        LOG.info("CONSOLIDAÇÃO anual | %s | reunindo %d Parquet(s)...", year, len(files))
         count = _concatenate(files, target)
+        LOG.info("CONSOLIDAÇÃO anual | %s | %d linhas salvas em %s",
+                 year, count, target)
         annual[str(year)] = {"arquivo": str(target), "linhas": count, "consultas": len(files)}
         annual_paths.append(target)
     if not annual_paths:
         raise ValueError("Nenhum Parquet mensal concluído no período.")
     target_series = catalog.root / "consolidado" / "serie" / f"sisab_{start}_{end}.parquet"
+    LOG.info("CONSOLIDAÇÃO série histórica | %s a %s | reunindo %d arquivo(s) anuais...",
+             start, end, len(annual_paths))
     series_count = _concatenate(annual_paths, target_series, start=start, end=end)
+    LOG.info("CONSOLIDAÇÃO série histórica | %d linhas salvas em %s",
+             series_count, target_series)
     manifest = {
         "periodo": {"inicio": start, "fim": end},
         "parcial": bool(pending),
