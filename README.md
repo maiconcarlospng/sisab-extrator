@@ -16,6 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/maiconcarlospng/sisab-extrator#o-que-ele-faz">Conheça o projeto</a> ·
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#pr%C3%A9-requisitos-para-usar-o-sisab-extrator">Pré-requisitos</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#instala%C3%A7%C3%A3o-no-rstudio">Instale no R</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#primeiro-download">Primeiro download</a> ·
   <a href="https://github.com/maiconcarlospng/sisab-extrator#onde-ficam-os-dados">Arquivos gerados</a> ·
@@ -55,6 +56,70 @@ A ideia é reduzir o trabalho manual de baixar muitos arquivos do portal e facil
 O programa preserva o arquivo recebido do SISAB, gera Parquets por consulta e reúne os resultados **primeiro por ano, depois por período completo**. A consolidação **não soma automaticamente** consultas diferentes, porque elas podem representar contagens sobrepostas.
 
 ---
+
+## Pré-requisitos para usar o SISAB Extrator
+
+Antes de instalar, confira se seu computador tem os programas abaixo. O **R é
+a interface de trabalho**, e o **Python faz a coleta e a geração dos Parquets**.
+
+| Requisito | Necessário para | Observações |
+|---|---|---|
+| **R 4.0.0 ou superior** | Instalar e usar o pacote R | [Baixar R](https://cran.r-project.org/) |
+| **Python 3.10 ou superior** | Inspecionar o portal, planejar, baixar e converter os dados | Precisa estar acessível pelo comando `python`; deve incluir `pip` e o módulo `venv`. [Baixar Python](https://www.python.org/downloads/) |
+| **Git** | Instalar ou atualizar o motor Python direto do GitHub | Precisa estar acessível pelo comando `git`. [Baixar Git](https://git-scm.com/downloads) |
+| **Internet e acesso HTTPS** | Instalação e extração | A rede deve permitir acesso ao GitHub, ao PyPI (dependências Python) e a `sisab.saude.gov.br`. Para instalar pacotes R, também é preciso acessar o repositório R escolhido |
+| **Espaço em disco e permissão de escrita** | Guardar o ambiente Python isolado, CSV ZIP, Parquets e catálogo SQLite | O espaço necessário varia com os períodos e filtros selecionados; reserve espaço para downloads e consolidações |
+
+**Opcionais:** o [RStudio](https://posit.co/download/rstudio-desktop/) facilita o
+uso do R, mas não é obrigatório; o pacote R `remotes` é necessário **somente**
+para a alternativa de instalação pelo GitHub indicada abaixo. Para **analisar
+Parquets no R**, instale `arrow`; `dplyr` facilita filtros e tabelas.
+Para ler os JSON de inspeção no R, você pode usar `jsonlite`.
+
+### Verificar os pré-requisitos no RStudio
+
+Cole o código abaixo no **Console** do RStudio. Ele apenas verifica as
+instalações — não altera pacotes, não instala programas e não baixa dados:
+
+```r
+cat("Versão do R:", as.character(getRversion()), "\n")
+if (getRversion() < "4.0.0") {
+  stop("É necessário R 4.0.0 ou superior.")
+}
+
+programas <- Sys.which(c("python", "git"))
+print(programas)
+
+if (!nzchar(programas[["python"]])) {
+  stop("Python não encontrado. Instale Python 3.10+ e confira o PATH.")
+}
+if (!nzchar(programas[["git"]])) {
+  stop("Git não encontrado. Instale o Git e confira o PATH.")
+}
+
+system2(programas[["python"]], "--version")
+system2(programas[["python"]], c("-m", "pip", "--version"))
+system2(programas[["git"]], "--version")
+
+cat("Confira acima se o Python é 3.10 ou superior.\n")
+```
+
+No **Windows**, durante a instalação do Python, habilite a opção de
+adicioná-lo ao `PATH`, quando disponível. Se você acabou de instalar Python
+ou Git e `Sys.which()` ainda estiver vazio, **feche e reabra o RStudio**.
+Se `pip` ou `venv` não estiverem disponíveis, corrija a instalação do
+Python antes de executar `sisab_instalar_motor()`.
+
+**Não é necessário instalar manualmente** `requests`, `beautifulsoup4`,
+`pyarrow` ou alterar o `chardet` do PySUS: `sisab_instalar_motor()` cria
+um **ambiente Python separado** e instala as bibliotecas necessárias nele.
+Para apenas **ler Parquets já existentes pelo R**, Python, Git e acesso ao
+SISAB não são necessários; basta R e `arrow`.
+
+> **Acesso aos dados:** o projeto usa relatórios **públicos e agregados**.
+> A disponibilidade de competências e combinações de filtros depende do
+> portal SISAB. A instalação correta não garante que qualquer combinação
+> gere um CSV; valide uma consulta pequena antes de baixar uma série histórica.
 
 ## Instalação no RStudio
 
