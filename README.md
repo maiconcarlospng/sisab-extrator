@@ -163,7 +163,7 @@ sisab_status()
 
 ### Se o download demorar muito
 
-Desde o **pacote R 0.2.2 / motor Python 0.1.2**, o console informa
+Com o **pacote R 0.2.2 / motor Python 0.1.4**, o console informa
 quando o programa consulta o site, recebe o CSV, converte para Parquet e
 inicia a consolidação. Para identificar rapidamente um problema de rede,
 você pode limitar a espera por **inatividade de uma requisição**, sem desligar
@@ -190,6 +190,14 @@ também usa formulários JSF, pausas e novas tentativas. Entretanto, ele
 separa os relatórios por **18 faixas etárias e 2 sexos (36 downloads por mês)**,
 enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
+
+Para receber o progresso detalhado, atualize o motor Python após instalar
+o pacote R (o R continua na versão **0.2.2**):
+
+```r
+library(sisabextrator)
+sisab_instalar_motor(atualizar = TRUE)
+```
 
 O console agora mostra **FASE 1/4** (identificar filtros),
 **FASE 2/4** (validar e registrar consultas), **FASE 3/4** (baixar e converter)
