@@ -209,9 +209,9 @@ system2(
 | Componente | Versão |
 |---|---|
 | Pacote R `sisabextrator` | **0.2.3** |
-| Motor Python `sisab-extrator` | **0.1.5** |
+| Motor Python `sisab-extrator` | **0.1.6** |
 
-No resultado do Python, procure a linha `Version: 0.1.5`. Não é necessário
+No resultado do Python, procure a linha `Version: 0.1.6`. Não é necessário
 digitar o caminho do Python: o próprio código o descobre.
 
 Se o pacote **R** estiver antigo, atualize pelo procedimento do passo 1,
@@ -225,11 +225,23 @@ o relatório e os filtros adequados à pesquisa, especialmente
 `tipo_producao` quando exigido pelo SISAB. Já os comandos de verificação
 acima são automáticos.
 
+**Sobre os campos de `pip show`:** `Name`, `Version`, `Summary`,
+`Author`, `Author-email`, `License` e links do projeto vêm dos
+metadados do pacote, definidos pelos desenvolvedores no `pyproject.toml`.
+Desde o motor **0.1.6**, o projeto informa a autoria, o contato do GitHub
+e os endereços de repositório, documentação e problemas. Em metadados
+Python modernos, esses endereços aparecem como `Project-URL`;
+o campo legado `Home-page` pode continuar vazio sem indicar erro.
+`Location` é escolhido automaticamente pelo Python, `Requires`
+é preenchido pelas dependências e `Required-by` fica vazio quando
+nenhum outro pacote Python instalado depende diretamente do extrator.
+**Não digite valores para esses campos no RStudio.**
+
 Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
 ## Primeiro download
 
-**Atualização importante (R 0.2.3 / motor Python 0.1.5):** o SISAB exige
+**Atualização importante (R 0.2.3 / motor Python 0.1.6):** o SISAB exige
 que a variável **Tipo de Produção** esteja na linha/coluna ou que pelo
 menos uma opção seja escolhida nesse filtro. A opção `CIAP/CID`
 não substitui esse filtro. Por isso, nas consultas abaixo usamos
@@ -327,7 +339,7 @@ enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
 Para receber o progresso detalhado e o filtro Tipo de Produção, use
-o pacote R **0.2.3** e atualize o motor Python para **0.1.5**:
+o pacote R **0.2.3** e atualize o motor Python para **0.1.6**:
 
 ```r
 library(sisabextrator)
@@ -526,7 +538,7 @@ retornou a seguinte mensagem do próprio SISAB:
 
 > Por favor, selecione a variável "Tipo de Produção" como opção na Linha/Coluna ou selecione uma das opções no filtro Tipo de Produção*.
 
-A versão **R 0.2.3 + Python 0.1.5** permite escolher esse campo com
+A versão **R 0.2.3 + Python 0.1.6** permite escolher esse campo com
 `tipo_producao`, registra o filtro no plano e o preserva nos arquivos
 Parquet. Exemplo (após conferir as opções com `sisab_inspecionar()`):
 
