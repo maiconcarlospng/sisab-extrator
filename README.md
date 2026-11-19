@@ -330,7 +330,7 @@ try(sisab_baixar(
 ))
 
 arquivo <- file.path("data", "inspecao", "diagnostico_exportacao_municipal.json")
-if (file.exists(arquivo)) cat(readLines(arquivo, warn = FALSE), sep = "\\n")
+if (file.exists(arquivo)) cat(readLines(arquivo, warn = FALSE), sep = "\n")
 ```
 
 Se o SISAB devolver outra página HTML, o extrator salva
