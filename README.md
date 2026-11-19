@@ -311,6 +311,37 @@ Não. Você usa funções no RStudio; apenas precisa instalar Python e Git para 
 O programa registra o andamento e permite reaproveitar consultas já concluídas. Use `sisab_status()` para encontrar falhas.
 </details>
 
+### Quando o SISAB responde com HTML, mas não entrega CSV
+
+Um `HTTP 200` significa que o servidor respondeu, **não que o CSV tenha sido
+gerado**. Para evitar tentativas desnecessárias, faça apenas uma exportação de
+diagnóstico após atualizar o motor Python para **0.1.3**:
+
+```r
+sisab_instalar_motor(atualizar = TRUE)
+
+try(sisab_baixar(
+  inicio = "202401", fim = "202401",
+  relatorio = "municipal",
+  linhas = "Municipio", colunas = "CIAP/CID",
+  idades = "none", sexos = "none",
+  tentativas = 0, tempo_limite = 120,
+  consolidar = FALSE
+))
+
+arquivo <- file.path("data", "inspecao", "diagnostico_exportacao_municipal.json")
+if (file.exists(arquivo)) cat(readLines(arquivo, warn = FALSE), sep = "\\n")
+```
+
+Se o SISAB devolver outra página HTML, o extrator salva
+`data/inspecao/diagnostico_exportacao_municipal.json` com o tipo de resposta,
+os nomes de campos enviados e eventuais mensagens de validação do site.
+**O arquivo não contém cookies, ViewState nem o HTML completo.**
+
+A opção `CIAP/CID` pode depender de filtros adicionais. O fato de ela aparecer
+na lista de colunas não garante que o servidor aceite a exportação. Antes de
+alterar o envio de dados, é preciso verificar esse diagnóstico.
+
 ## 📚 Documentação e contribuições
 
 - 📘 [Guia técnico: comandos Python, formatos e limitações](docs/guia-tecnico.md)
