@@ -203,8 +203,9 @@ def test_repeated_html_stops_after_two_similar_responses(tmp_path):
         calls.append(method)
         return Response()
 
-    # Depois do primeiro POST, a nova leitura do formulário deve ser bem-sucedida.
+    # Evita acesso a rede: o formulário permanece válido entre tentativas.
     client._request = fake_request
+    client.open = lambda: client.page
     with pytest.raises(PortalError, match="Duas respostas HTML consecutivas"):
         client.download(example_job())
     assert calls.count("POST") == 2
