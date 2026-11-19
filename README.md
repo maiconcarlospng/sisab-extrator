@@ -191,8 +191,71 @@ separa os relatórios por **18 faixas etárias e 2 sexos (36 downloads por mês)
 enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
+O console agora mostra **FASE 1/4** (identificar filtros),
+**FASE 2/4** (validar e registrar consultas), **FASE 3/4** (baixar e converter)
+e **FASE 4/4** (consolidar ou explicar por que não foi possível).
+Cada consulta também percorre até **5 etapas**: mostrar os filtros, solicitar
+CSV, salvar ZIP, converter Parquet e concluir. Na conversão, o programa
+informa quantas linhas já foram gravadas.
+
+Exemplo ilustrativo de mensagens (não é uma execução real do portal):
+
+```text
+FASE 1/4 | Abrindo relatório do SISAB e identificando filtros...
+FASE 2/4 | Plano validado: 1 consulta(s)
+FASE 3/4 | Iniciando download e conversão em Parquet...
+Consulta 1/1 | ETAPA 1/5 | municipal | mês 202401 | ...
+Consulta 1/1 | ETAPA 2/5 | Solicitando CSV ao SISAB...
+SISAB POST ... | tentativa 1/2 | limite 120s
+Consulta 1/1 | ETAPA 3/5 | CSV recebido; salvando ZIP...
+Consulta 1/1 | ETAPA 4/5 | Lendo CSV e convertendo para Parquet...
+Consulta 1/1 | ETAPA 4/5 | 25000 linhas convertidas até agora
+Consulta 1/1 | ETAPA 5/5 | Concluído ...
+PROGRESSO: 1/1 consultas finalizadas (100.0%)
+FASE 4/4 | Consolidando arquivos anuais e série histórica...
+```
+
+**Importante:** a porcentagem representa as **consultas concluídas**, não
+a quantidade de bytes recebidos. Enquanto o SISAB ainda processa a resposta
+HTTP, o programa informa a espera, mas não consegue saber o percentual
+real da resposta antes de recebê-la.
+
 O comando `sisab_status()` executado **após** `sisab_baixar()` só começa
-quando o download terminar (ou retornar erro).
+quando o download terminar (ou retornar erro). Para mostrar o status mesmo
+que o download falhe, use:
+
+```r
+try(sisab_baixar(
+  inicio = "202401", fim = "202401",
+  relatorio = "municipal", linhas = "Municipio",
+  colunas = "CIAP/CID", idades = "none", sexos = "none",
+  tempo_limite = 120, tentativas = 0, consolidar = FALSE
+))
+
+sisab_status()
+```
+
+
+
+### 📂 Abrir um arquivo escolhido por você
+
+Se você já baixou os dados e quer abrir **um arquivo Parquet específico**, não
+precisa descobrir a pasta manualmente. No RStudio, execute:
+
+```r
+install.packages("arrow") # apenas na primeira vez
+arquivo <- file.choose()  # abre a janela para escolher o arquivo
+dados <- arrow::read_parquet(arquivo)
+
+View(dados)             # abre a tabela no RStudio
+```
+
+Escolha um arquivo com extensão **`.parquet`** na pasta
+`data/mensal/`, `data/consolidado/anual/` ou `data/consolidado/serie/`.
+O exemplo lê o arquivo selecionado para a memória: para bases muito grandes,
+prefira `arrow::open_dataset(arquivo)` e aplique filtros antes de
+`dplyr::collect()`. A janela `file.choose()` funciona em sessões
+interativas do RStudio; se cancelar, o R pode mostrar um erro de seleção.
 
 ## 📈 Analisando os dados no R
 
@@ -337,6 +400,17 @@ Se o SISAB devolver outra página HTML, o extrator salva
 `data/inspecao/diagnostico_exportacao_municipal.json` com o tipo de resposta,
 os nomes de campos enviados e eventuais mensagens de validação do site.
 **O arquivo não contém cookies, ViewState nem o HTML completo.**
+
+**Prefere escolher o arquivo com o mouse?** No RStudio, execute:
+
+```r
+arquivo <- file.choose()  # escolha o diagnóstico .json no Explorador
+cat(readLines(arquivo, warn = FALSE, encoding = "UTF-8"), sep = "\n")
+```
+
+Você também pode abrir o arquivo na aba **Files** do RStudio.
+Para localizar a pasta criada pelo download, use `getwd()`.
+O seletor não faz o download: ele abre um arquivo **já existente** no computador.
 
 A opção `CIAP/CID` pode depender de filtros adicionais. O fato de ela aparecer
 na lista de colunas não garante que o servidor aceite a exportação. Antes de
