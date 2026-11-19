@@ -118,6 +118,14 @@ Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
 ## Primeiro download
 
+**Atualização importante (R 0.2.3 / motor Python 0.1.5):** o SISAB exige
+que a variável **Tipo de Produção** esteja na linha/coluna ou que pelo
+menos uma opção seja escolhida nesse filtro. A opção `CIAP/CID`
+não substitui esse filtro. Por isso, nas consultas abaixo usamos
+`tipo_producao = "Atendimento Individual"` **somente como exemplo**:
+primeiro confirme que esse rótulo existe na inspeção e escolha o recorte
+correto para o seu estudo.
+
 Recomendamos começar com **apenas uma competência**, para conferir como o SISAB responde.
 
 **Passo 1 — descubra os filtros disponíveis:**
@@ -128,6 +136,19 @@ sisab_inspecionar(relatorio = "municipal")
 ```
 
 As informações ficam em `data/inspecao/`. Use `getwd()` para descobrir onde essa pasta foi criada no seu computador.
+Na versão atual, o console também mostra os **tipos de produção
+disponíveis**, com seus rótulos e valores. Se preferir ver isso no JSON:
+
+```r
+# Se necessário, execute install.packages("jsonlite") uma única vez.
+arquivo <- file.path("data", "inspecao", "municipal.json")
+opcoes <- jsonlite::fromJSON(arquivo, simplifyVector = FALSE)
+opcoes$tipo_producao$options
+```
+
+Escolha uma opção realmente listada pelo portal. Se o objetivo for consultar
+todos os tipos, `tipo_producao = "all"` cria consultas **separadas por tipo**
+e pode incluir combinações não aceitas com a coluna escolhida.
 
 **Passo 2 — prepare uma consulta de teste (sem baixar ainda):**
 
@@ -138,6 +159,7 @@ sisab_planejar(
   relatorio = "municipal",
   linhas = "Municipio",
   colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual", # confirme na inspeção
   idades = "none",
   sexos = "none"
 )
@@ -152,6 +174,7 @@ sisab_baixar(
   relatorio = "municipal",
   linhas = "Municipio",
   colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual", # confirme na inspeção
   idades = "none",
   sexos = "none"
 )
@@ -159,7 +182,7 @@ sisab_baixar(
 sisab_status()
 ```
 
-> **Antes dos passos 2 e 3:** confirme na inspeção se as opções **Município** e **CIAP/CID** realmente existem no relatório escolhido. Se os nomes ou cruzamentos forem diferentes, adapte o exemplo. O portal pode mudar e algumas consultas podem não ser aceitas.
+> **Antes dos passos 2 e 3:** confirme na inspeção se as opções **Município**, **CIAP/CID** e **Atendimento Individual** realmente existem no relatório escolhido. Se os nomes ou cruzamentos forem diferentes, adapte o exemplo. O portal pode mudar e algumas consultas podem não ser aceitas. Nenhum tipo de produção é escolhido silenciosamente.
 
 ### Se o download demorar muito
 
@@ -174,6 +197,7 @@ sisab_baixar(
   inicio = "202401", fim = "202401",
   relatorio = "municipal",
   linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual", # confira o rótulo no portal
   idades = "none", sexos = "none",
   tempo_limite = 120, # segundos de inatividade tolerados pelo HTTP
   tentativas = 1,     # uma nova tentativa após falha
@@ -191,8 +215,8 @@ separa os relatórios por **18 faixas etárias e 2 sexos (36 downloads por mês)
 enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
-Para receber o progresso detalhado, atualize o motor Python após instalar
-o pacote R (o R continua na versão **0.2.2**):
+Para receber o progresso detalhado e o filtro Tipo de Produção, use
+o pacote R **0.2.3** e atualize o motor Python para **0.1.5**:
 
 ```r
 library(sisabextrator)
@@ -236,7 +260,8 @@ que o download falhe, use:
 try(sisab_baixar(
   inicio = "202401", fim = "202401",
   relatorio = "municipal", linhas = "Municipio",
-  colunas = "CIAP/CID", idades = "none", sexos = "none",
+  colunas = "CIAP/CID", tipo_producao = "Atendimento Individual",
+  idades = "none", sexos = "none",
   tempo_limite = 120, tentativas = 0, consolidar = FALSE
 ))
 
@@ -316,6 +341,7 @@ sisab_planejar(
   relatorio = "all",
   linhas = "all",
   colunas = "all",
+  tipo_producao = "all", # uma consulta por tipo listado pelo portal
   idades = "all",
   sexos = "both",
   aceitar_plano_grande = TRUE
@@ -382,6 +408,39 @@ Não. Você usa funções no RStudio; apenas precisa instalar Python e Git para 
 O programa registra o andamento e permite reaproveitar consultas já concluídas. Use `sisab_status()` para encontrar falhas.
 </details>
 
+### Se o portal solicitar "Tipo de Produção"
+
+Em novembro de 2026, uma tentativa de baixar `Município × CIAP/CID`
+retornou a seguinte mensagem do próprio SISAB:
+
+> Por favor, selecione a variável "Tipo de Produção" como opção na Linha/Coluna ou selecione uma das opções no filtro Tipo de Produção*.
+
+A versão **R 0.2.3 + Python 0.1.5** permite escolher esse campo com
+`tipo_producao`, registra o filtro no plano e o preserva nos arquivos
+Parquet. Exemplo (após conferir as opções com `sisab_inspecionar()`):
+
+```r
+sisab_planejar(
+  inicio = "202401", fim = "202401", relatorio = "municipal",
+  linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual",
+  idades = "none", sexos = "none"
+)
+
+try(sisab_baixar(
+  inicio = "202401", fim = "202401", relatorio = "municipal",
+  linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual",
+  idades = "none", sexos = "none",
+  tentativas = 0, tempo_limite = 120, consolidar = FALSE
+))
+sisab_status()
+```
+
+Isso corrige o **envio de um filtro obrigatório conhecido**. Ainda não prova
+que a combinação completa de filtros seja aceita pelo SISAB ou que o
+CSV esteja disponível, pois a extração real requer validação após a atualização.
+
 ### Quando o SISAB responde com HTML, mas não entrega CSV
 
 Um `HTTP 200` significa que o servidor respondeu, **não que o CSV tenha sido
@@ -395,6 +454,7 @@ try(sisab_baixar(
   inicio = "202401", fim = "202401",
   relatorio = "municipal",
   linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual", # confira o rótulo no portal
   idades = "none", sexos = "none",
   tentativas = 0, tempo_limite = 120,
   consolidar = FALSE
