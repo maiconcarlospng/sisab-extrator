@@ -56,11 +56,18 @@ class Job:
     tp_idade: str
     sexo: str
     sexo_valor: str
+    tipo_producao: str = ""
+    tipo_producao_label: str = ""
 
     @property
     def key(self) -> str:
+        # Mantém as chaves antigas quando não havia seleção de produção.
+        data = asdict(self)
+        if not self.tipo_producao:
+            data.pop("tipo_producao")
+            data.pop("tipo_producao_label")
         return hashlib.sha256(
-            json.dumps(asdict(self), ensure_ascii=False, sort_keys=True).encode("utf-8")
+            json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()[:24]
 
     @property
