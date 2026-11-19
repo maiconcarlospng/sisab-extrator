@@ -1,202 +1,51 @@
-# SISAB Extrator
+# SISAB Extrator 📊
 
-Extrator em Python de **relatórios agregados públicos** do SISAB. Inspirado na
-organização do projeto [`rfsaldanha/sisab_scrapper`](https://github.com/rfsaldanha/sisab_scrapper),
-com configuração dos filtros encontrados no formulário, cache das respostas originais,
-Parquet por consulta, **consolidação anual e, em seguida, da série histórica**.
+**Baixe e organize dados públicos do SISAB para usar no R e em pesquisas em saúde.**
 
-> **Estado: protótipo experimental.** A lógica básica e os testes locais foram
-> desenvolvidos, mas o formulário federal e o municipal **não foram testados
-> contra o site ao vivo**. A disponibilidade de colunas, opções, competências e
-> combinações depende do SISAB. Não há nenhuma promessa de acesso a microdados
-> individuais ou de extração de CIDs não oferecidos pelo relatório público.
+O **SISAB Extrator** é um projeto gratuito e de código aberto que ajuda a consultar os relatórios públicos do [SISAB](https://sisab.saude.gov.br/) (Sistema de Informação em Saúde para a Atenção Básica), guardar os resultados e organizá-los por mês, ano e período completo.
 
-## O que faz
+Ele foi pensado para estudantes, pesquisadores e profissionais de saúde que precisam trabalhar com muitos dados sem baixar e juntar manualmente dezenas de arquivos.
 
-- `probe`: lê o formulário JSF e lista **competências, linhas, colunas e demais campos** encontrados. Não inventa códigos para opções do portal.
-- `plan`: gera `.jsonl` com consultas por competência, linha, coluna, faixa etária e sexo. É possível selecionar `--columns "CIAP/CID"` **se essa opção aparecer no `probe`**.
-- `download`: baixa os CSVs originais disponíveis, preserva-os em ZIP, transforma em Parquet (uma linha por categoria/contagem), registra no SQLite e retoma a execução.
-- **Ao concluir os downloads:** reúne os Parquets mensais em um Parquet **anual** por ano e usa os anuais para gerar um Parquet da **série histórica** do período solicitado.
-- `consolidate`: refaz os consolidados sem baixar novamente; `status`: mostra progresso e falhas.
+> **Importante:** o projeto ainda está em desenvolvimento. Os testes do código foram feitos, mas a extração completa dos relatórios reais do SISAB **ainda precisa ser validada**. Algumas combinações de filtros podem não funcionar no site.
 
-## Instalação
+## O que é possível fazer?
 
-Python 3.10+:
+- **Descobrir os filtros disponíveis** no relatório do SISAB.
+- **Escolher o período**, os tipos de relatório e as opções de organização dos dados.
+- **Baixar os arquivos** e retomar o trabalho caso uma consulta falhe.
+- **Guardar em Parquet**, um formato adequado para bases de dados grandes.
+- **Organizar automaticamente os resultados:** primeiro por mês, depois por ano e, por último, em uma série histórica.
+- **Abrir os dados pelo RStudio** sem carregar todos os anos na memória de uma vez.
 
-```bash
-python -m venv .venv
-# Linux/macOS:
-source .venv/bin/activate
-# Windows (PowerShell): .venv\\Scripts\\Activate.ps1
-pip install -e .
-sisab-extrator --help
+### Que dados podem aparecer?
+
+Dependendo do relatório e dos filtros disponíveis no SISAB, é possível trabalhar com informações por **município, competência (mês), sexo, faixa etária, CIAP/CID e tipo de produção**.
+
+**Não são microdados de pacientes:** cada linha do resultado representa uma contagem ou categoria da tabela pública, não um atendimento individual identificado.
+
+---
+
+## Comece pelo RStudio
+
+### 1. Instale o pacote R
+
+A forma mais simples será pelo **R-universe**, assim que a primeira publicação estiver concluída:
+
+```r
+install.packages(
+  "sisabextrator",
+  repos = c(
+    "https://maiconcarlospng.r-universe.dev",
+    "https://cloud.r-project.org"
+  )
+)
+
+library(sisabextrator)
 ```
 
-## Comece pela inspeção
+**O pacote ainda pode não aparecer no R-universe:** a primeira compilação pode levar **cerca de uma hora**, conforme a [documentação oficial](https://docs.r-universe.dev/publish/set-up.html#wait-first-build). Consulte [a página do pacote](https://maiconcarlospng.r-universe.dev/sisabextrator) antes de instalar. Se continuar ausente depois desse período, será necessário verificar a publicação.
 
-```bash
-sisab-extrator probe --report federal
-sisab-extrator probe --report municipal
-```
-
-Isso grava `data/inspecao/federal.json` e `data/inspecao/municipal.json`.
-Abra esses arquivos para confirmar **os rótulos e valores reais** de `selectLinha` e `selectcoluna`.
-O relatório federal pode usar controles diferentes da implementação conhecida
-para o municipal. Nesse caso, o comando avisa que é necessário adaptar o parser.
-
-## Plano de download: CIAP/CID por município
-
-Exemplo a validar após inspecionar o portal:
-
-```bash
-sisab-extrator plan \
-  --report federal \
-  --start 201801 --end 202512 \
-  --lines Municipio --columns 'CIAP/CID' \
-  --ages all --sexes both \
-  --allow-large-plan
-```
-
-As escolhas por rótulo não diferenciam acentos em `Municipio` e `Município`;
-se houver erro de correspondência, forneça o **valor** da opção mostrado no `probe`.
-
-## Todos os anos, todas as linhas e colunas
-
-**Primeiro confira o plano**: todas as combinações podem levar a dezenas de
-milhares de requisições e algumas podem ser inválidas para o portal.
-
-```bash
-sisab-extrator plan \
-  --report all --start auto --end auto \
-  --lines all --columns all --ages all --sexes both \
-  --allow-large-plan
-```
-
-Para iniciar os downloads com esses mesmos parâmetros:
-
-```bash
-sisab-extrator download \
-  --report all --start auto --end auto \
-  --lines all --columns all --ages all --sexes both \
-  --allow-large-plan
-```
-
-**Atenção:** `--allow-large-plan` não acelera o SISAB. O comando espera pelo
-portal entre requisições (padrão 2 segundos), aplica tentativas com espera
-progressiva e registra erros. O plano pode gerar consultas sem dados ou não
-suportadas pelo site. Não use execução paralela agressiva.
-
-### Faça primeiro uma execução pequena
-
-```bash
-sisab-extrator download \
-  --report municipal --start 202401 --end 202401 \
-  --lines Municipio --columns 'CIAP/CID' \
-  --ages none --sexes none
-```
-
-Substitua a coluna pelo valor que o `probe` realmente mostrar caso necessário.
-
-## Resultados
-
-```text
-data/
-  consultas.sqlite
-  inspecao/
-    federal.json
-    municipal.json
-  planos/
-    plano.jsonl
-  brutos/
-    federal/2024/202401/<id_da_consulta>.csv.zip
-  mensal/
-    federal/2024/202401/<id_da_consulta>.parquet
-  consolidado/
-    anual/
-      sisab_2023.parquet
-      sisab_2024.parquet
-    serie/
-      sisab_202301_202412.parquet
-      sisab_202301_202412.manifesto.json
-```
-
-Os arquivos mensais são **Parquets por consulta**, organizados por competência.
-O anual é a concatenação das consultas completas conhecidas daquele ano e a
-série é a concatenação dos anuais **filtrada para o período solicitado**.
-
-### Refazer consolidação
-
-```bash
-sisab-extrator consolidate --start 201801 --end 202512
-sisab-extrator status
-```
-
-Se houver consultas pendentes ou com erro, a consolidação é bloqueada por
-padrão, para não produzir uma série enganosa. `--allow-partial` serve apenas
-para uma análise explicitamente incompleta.
-
-## Colunas Parquet
-
-`consulta_id`, `competencia`, `ano`, `relatorio`, `fonte_url`, `linha`,
-`coluna`, `faixa_etaria`, `sexo`, `uf`, `ibge`, `municipio`, `categoria`,
-`valor`, `dimensoes_json`.
-
-- `categoria` é o **nome exato da coluna de medida retornada no CSV**. Se
-  `selectcoluna=CIAP/CID`, pode ser um código de CID/CIAP, mas **não se
-  assume** que todos os valores sejam códigos válidos.
-- `dimensoes_json` preserva os rótulos e valores das dimensões da tabela.
-- Célula vazia ou suprimida (`-`) é **ausente**, não zero. Contagem `0`
-  explicitamente fornecida é preservada.
-- Uma consulta pode aparecer em diversas visões; **não some indiscriminadamente
-  registros de consultas com linhas/colunas diferentes**. O consolidado não
-  faz soma ou desduplicação automática de indicadores diferentes.
-
-## Limites e validação necessária
-
-1. **Sem microdados individuais:** os arquivos públicos são tabulações agregadas.
-2. **CID:** o código do projeto de referência contém um campo `lsCid`, mas
-   isso não comprova que ele possa ser usado livremente como filtro. Esta
-   versão permite consultar CIAP/CID **como coluna quando a opção existe**.
-3. **Campos variáveis:** alguns relatórios federais, linhas de equipes e
-   estabelecimentos podem ter cabeçalhos não reconhecidos pelo parser.
-   Os CSVs originais são preservados e erros são registrados, sem fabricar
-   medidas. Amplie `DIMENSIONS` conforme os CSVs reais.
-4. **Não é um crawler ilimitado do portal:** o MVP abrange os dois endereços
-   conhecidos de produção/saúde. Outros relatórios públicos podem ser
-   testados com `--report-url https://sisab.saude.gov.br/.../Relatorio.xhtml`,
-   desde que usem estrutura compatível.
-5. A página usa JSF e pode mudar controles, sessão, ViewState e resposta
-   AJAX. Ajustes podem ser necessários após validar no portal ao vivo.
-6. Não contorna autenticação, CAPTCHA, medidas de segurança nem limites
-   administrativos; use respeitando as condições de acesso.
-
-## Testes locais
-
-```bash
-pip install -e '.[dev]'
-pytest -q
-```
-
-Os testes não fazem requisições ao SISAB. Para validar o download real,
-inspecione a página, rode uma competência e compare o CSV exportado manualmente.
-
-## Referência / créditos
-
-Projeto original de referência: [rfsaldanha/sisab_scrapper](https://github.com/rfsaldanha/sisab_scrapper).
-Esta implementação é independente, voltada à parametrização, rastreabilidade
-e à consolidação em Parquet; não é endossada pelo Ministério da Saúde.
-
-## Repositório
-
-[Código-fonte do SISAB Extrator](https://github.com/maiconcarlospng/sisab-extrator).
-
-## Pacote R — instalação pelo GitHub e R-universe
-
-A interface R `sisabextrator` agora fica na **raiz** deste repositório,
-com `DESCRIPTION`, `NAMESPACE`, `R/` e `man/`. A subpasta
-`rpkg/` é mantida temporariamente apenas para compatibilidade.
-
-### Instalação pelo GitHub (disponível)
+**Alternativa pelo GitHub**, sem esperar o R-universe:
 
 ```r
 install.packages("remotes")
@@ -204,86 +53,169 @@ remotes::install_github("maiconcarlospng/sisab-extrator")
 library(sisabextrator)
 ```
 
-### Instalação pelo R-universe (depois de ativar o universo)
+Se o RStudio não conseguir acessar a API do GitHub, o problema pode ser de conexão. Uma opção que usa o programa Git instalado no computador é `remotes::install_git("https://github.com/maiconcarlospng/sisab-extrator.git")`.
+
+### 2. Prepare o programa que faz os downloads
+
+O pacote R é a interface. Para **baixar do SISAB**, ele utiliza um programa escrito em **Python**.
+
+Você precisará ter **Python 3.10 ou mais recente** e **Git** instalados no computador. Depois de instalar o pacote R, execute **uma vez**:
 
 ```r
-install.packages(
-  "sisabextrator",
-  repos = c("https://maiconcarlospng.r-universe.dev", "https://cloud.r-project.org")
-)
-library(sisabextrator)
+sisab_instalar_motor()
 ```
 
-**Primeira publicação:** o repositório de configuração
-[`maiconcarlospng.r-universe.dev`](https://github.com/maiconcarlospng/maiconcarlospng.r-universe.dev)
-e seu `packages.json` já foram criados. O GitHub App foi autorizado com acesso
-a todos os repositórios. Segundo a [etapa de primeira compilação da documentação
-do R-universe](https://docs.r-universe.dev/publish/set-up.html#wait-first-build),
-o processamento inicial pode levar **cerca de 1 hora**. Durante esse intervalo,
-a mensagem `No packages found for this owner or maintainer` e a ausência do
-índice `PACKAGES` podem indicar apenas que a indexação ainda não terminou.
+Se o Windows informar que não encontrou `python`, confira a instalação do Python e se ele está disponível no terminal.
 
-**A compilação aprovada no GitHub Actions não substitui a compilação no
-R-universe.** Só tente instalar pelo repositório R-universe quando o pacote
-estiver listado em https://maiconcarlospng.r-universe.dev/.
+> Para **abrir arquivos Parquet que já foram baixados**, não é necessário executar o motor Python.
 
-Se, **após pelo menos 1 hora** desde a ativação, o universo permanecer vazio,
-consulte os registros do serviço e a
-[documentação de publicação](https://docs.r-universe.dev/publish/set-up.html)
-antes de alterar a configuração. Não é necessário criar novamente os
-repositórios ou reinstalar o GitHub App.
+### 3. Veja quais opções estão disponíveis
 
-O pacote R pode ser instalado sem Python para leitura de arquivos Parquet;
-**para baixar do SISAB**, o motor Python 3.10+ é instalado separadamente:
+Antes de começar os downloads, descubra quais filtros o próprio SISAB está oferecendo:
 
 ```r
-sisab_instalar_motor(python = "python")
 sisab_inspecionar(relatorio = "federal")
+sisab_inspecionar(relatorio = "municipal")
 ```
 
-Para análise das bases Parquet, instale `arrow` e `dplyr` e filtre
-os dados antes de `collect()`:
+As informações encontradas serão salvas na pasta `data/inspecao/`, no diretório de trabalho do R. Para descobrir qual é essa pasta, execute `getwd()`.
+
+### 4. Faça primeiro um teste pequeno
+
+Comece com **um mês**, em vez de tentar baixar todos os anos de uma vez.
+
+O exemplo abaixo usa município e CIAP/CID. **Confirme na inspeção anterior se essas opções existem e quais são seus nomes no relatório escolhido.** Caso contrário, troque pelos nomes encontrados.
+
+```r
+sisab_planejar(
+  inicio = "202401",
+  fim = "202401",
+  relatorio = "municipal",
+  linhas = "Municipio",
+  colunas = "CIAP/CID",
+  idades = "none",
+  sexos = "none"
+)
+```
+
+Esse comando **só prepara o plano**. Ele não baixa dados.
+
+Para fazer o download da mesma consulta:
+
+```r
+sisab_baixar(
+  inicio = "202401",
+  fim = "202401",
+  relatorio = "municipal",
+  linhas = "Municipio",
+  colunas = "CIAP/CID",
+  idades = "none",
+  sexos = "none"
+)
+```
+
+Depois, confira o andamento:
+
+```r
+sisab_status()
+```
+
+Se houver erro de formulário ou de exportação, a estrutura do site pode ter mudado. Nesse caso, o projeto precisará de ajustes: **os exemplos acima não são garantia de que o SISAB aceite essa combinação**.
+
+### 5. Trabalhe com os resultados no R
+
+Instale os pacotes de leitura e análise:
 
 ```r
 install.packages(c("arrow", "dplyr"))
 library(dplyr)
-dados <- sisab_abrir_anuais()
-mg <- sisab_filtrar_mg(dados)
-recorte <- mg |>
-  filter(competencia == "202401", coluna == "CIAP/CID") |>
+```
+
+Quando já existirem arquivos anuais, abra-os sem carregar tudo na memória:
+
+```r
+dados <- sisab_abrir_anuais(dados = "data")
+
+# Exemplo: selecionar informações de uma competência
+recorte <- dados |>
+  filter(competencia == "202401", relatorio == "municipal") |>
+  select(competencia, municipio, categoria, valor) |>
   collect()
 ```
 
-**Atenção:** exemplos de filtros dependem da nomenclatura real das opções
-encontradas em `sisab_inspecionar()`; o motor é experimental e os relatórios
-SISAB públicos trazem contagens agregadas, não prontuários individuais.
-Consultas diferentes podem medir os mesmos atendimentos. Não some visões
-sobrepostas.
+O `collect()` carrega **apenas o resultado filtrado** no R. Em bases muito grandes, acrescente outros filtros antes de usá-lo.
 
-### Publicar no R-universe
+**Cuidado ao somar valores:** relatórios e consultas diferentes podem contabilizar os mesmos atendimentos. Escolha uma mesma visão de dados antes de calcular totais.
 
-O R-universe requer um **outro** repositório público chamado
-[`maiconcarlospng.r-universe.dev`](https://github.com/maiconcarlospng/maiconcarlospng.r-universe.dev)
-na mesma conta do GitHub. Nele, crie um `packages.json` na raiz com o
-conteúdo de [`r-universe/packages.json`](r-universe/packages.json).
-**Não use `subdir`**: o pacote R está agora na raiz de `sisab-extrator`.
+---
 
-Depois, instale o
-[GitHub App R-universe](https://github.com/apps/r-universe/installations/new)
-na conta `maiconcarlospng`, concedendo acesso ao repositório do universo e
-ao repositório do pacote. Consulte a
-[documentação oficial](https://docs.r-universe.dev/publish/set-up.html).
-A primeira compilação pode levar cerca de 1 hora; verifique a página e os registros do R-universe antes de diagnosticar falhas.
+## Onde ficam os arquivos?
 
-### Histórico de grandes volumes
+O programa cria uma pasta chamada `data` no local em que você estiver trabalhando:
 
-- **Memória:** os ZIPs e os Parquets são tratados por lotes; análises no R
-  usam `arrow::open_dataset()` e filtros preguiçosos.
-- **Esquema:** os Parquets usam esquema canônico para evitar conflitos de
-  tipagem entre os anos. Respostas originais são preservadas para auditoria.
-- **2013:** o modo automático usa as competências disponibilizadas no site,
-  sem assumir `201301` a `201303` como disponíveis.
-- **Falhas de rede:** estado de consultas no SQLite, retomada e tentativas
-  com espera progressiva.
-- O download HTTP de **uma resposta individual** ainda pode consumir RAM
-  proporcional ao tamanho dessa resposta.
+| Pasta | O que você encontra |
+|---|---|
+| `data/brutos/` | Arquivos originais recebidos do SISAB |
+| `data/mensal/` | Resultados organizados por mês, em Parquet |
+| `data/consolidado/anual/` | Arquivos que reúnem os resultados de cada ano |
+| `data/consolidado/serie/` | Arquivo final com o período completo |
+| `data/inspecao/` | Informações sobre as opções oferecidas pelo site |
+
+**Parquet** é um formato de arquivo eficiente para armazenar e consultar tabelas grandes. Você pode abri-lo com o pacote `arrow` no R.
+
+O consolidado **reúne** as consultas realizadas, mas não soma automaticamente indicadores, porque algumas consultas podem se sobrepor.
+
+## Quero baixar todos os anos disponíveis
+
+É possível pedir ao programa que examine todos os períodos oferecidos pelo relatório e gere um plano maior. **Antes de executar milhares de consultas, valide um mês e confira os filtros disponíveis.**
+
+```r
+sisab_planejar(
+  inicio = "auto",
+  fim = "auto",
+  relatorio = "all",
+  linhas = "all",
+  colunas = "all",
+  idades = "all",
+  sexos = "both",
+  aceitar_plano_grande = TRUE
+)
+```
+
+A palavra `auto` significa: **usar o primeiro e o último mês que o site informar como disponíveis**. O programa não deve presumir que meses ausentes no início de 2013 estejam disponíveis.
+
+O plano pode gerar um número muito grande de consultas e incluir combinações que o portal não permita. Para executar o plano depois de verificá-lo, use `sisab_baixar()` com as mesmas opções.
+
+A consolidação acontece após os downloads concluídos: **mensal → anual → série histórica**. Se alguma consulta prevista falhar, a consolidação completa é bloqueada até que seja corrigida; assim você não recebe uma base incompleta como se estivesse pronta.
+
+## Dúvidas frequentes
+
+**O pacote já vem com todos os dados do Brasil?**  
+Não. Ele é uma ferramenta para consultar e baixar os dados públicos. Os arquivos serão criados no seu computador.
+
+**Consigo baixar uma linha por atendimento realizado?**  
+Não pelos relatórios públicos utilizados aqui. Eles mostram **quantidades agregadas**, e não registros individuais de pacientes.
+
+**Posso selecionar qualquer CID?**  
+Somente as opções e combinações que o relatório público do SISAB realmente oferecer. A coluna CIAP/CID ainda precisa de validação prática.
+
+**Preciso saber Python para usar no RStudio?**  
+Não é necessário programar em Python. Mas você precisa instalá-lo para executar os downloads. Para analisar Parquets já existentes, basta o R com `arrow`.
+
+**E se a internet cair?**  
+O programa registra as consultas realizadas e tenta reaproveitar os arquivos já baixados. Falhas devem ser conferidas com `sisab_status()`.
+
+**Por que o pacote ainda não aparece no R-universe?**  
+A primeira publicação depende de uma compilação feita pelo serviço e pode levar aproximadamente uma hora. O código passar nos testes do GitHub não significa que já foi publicado no R-universe.
+
+## Para quem prefere Python ou quer entender o funcionamento
+
+Há uma versão de linha de comando em Python e uma explicação mais detalhada dos arquivos, parâmetros e limitações no **[guia técnico](docs/guia-tecnico.md)**.
+
+## Autoria e créditos
+
+Projeto mantido por [Maicon Carlos](https://github.com/maiconcarlospng), inspirado no trabalho de [Rafael Saldanha — `sisab_scrapper`](https://github.com/rfsaldanha/sisab_scrapper).
+
+Código aberto sob a licença MIT. Este projeto é independente e **não é uma ferramenta oficial do Ministério da Saúde**.
+
+Sugestões, dúvidas e problemas podem ser registrados em [Issues](https://github.com/maiconcarlospng/sisab-extrator/issues).
