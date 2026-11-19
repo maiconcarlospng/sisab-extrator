@@ -179,6 +179,52 @@ sisab_instalar_motor(atualizar = TRUE)
 > GitHub). As versões anteriores instalavam o motor no Python compartilhado.
 > A partir da versão 0.2.1, o ambiente próprio é o padrão.
 
+### 3. Confira se o pacote R e o motor Python estão atualizados
+
+**Não é preciso preencher nada:** copie e execute este código no Console do RStudio
+depois da instalação. Ele mostra a versão do pacote R e a versão do motor Python
+isolado, sem instalar ou modificar nenhum programa.
+
+```r
+library(sisabextrator)
+
+# 1. Verificar a versão instalada do pacote R
+packageVersion("sisabextrator")
+
+# 2. Localizar automaticamente o Python exclusivo do SISAB Extrator
+python_sisab <- get(
+  ".sisab_venv_python",
+  envir = asNamespace("sisabextrator")
+)()
+
+# 3. Mostrar a versão do motor Python instalado
+system2(
+  python_sisab,
+  c("-m", "pip", "show", "sisab-extrator")
+)
+```
+
+**Versões esperadas nesta atualização:**
+
+| Componente | Versão |
+|---|---|
+| Pacote R `sisabextrator` | **0.2.3** |
+| Motor Python `sisab-extrator` | **0.1.5** |
+
+No resultado do Python, procure a linha `Version: 0.1.5`. Não é necessário
+digitar o caminho do Python: o próprio código o descobre.
+
+Se o pacote **R** estiver antigo, atualize pelo procedimento do passo 1,
+reinicie a sessão do R e carregue `library(sisabextrator)` novamente.
+Se apenas o motor **Python** estiver antigo, execute
+`sisab_instalar_motor(atualizar = TRUE)`. Se o ambiente Python isolado ainda
+não existir, execute primeiro `sisab_instalar_motor()`.
+
+**O que você precisa preencher de fato:** ao baixar dados, escolha o período,
+o relatório e os filtros adequados à pesquisa, especialmente
+`tipo_producao` quando exigido pelo SISAB. Já os comandos de verificação
+acima são automáticos.
+
 Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
 ## Primeiro download
