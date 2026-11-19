@@ -3,7 +3,9 @@
 #' A interface R controla as consultas e usa Apache Arrow para analisar os
 #' Parquets sem carregar todos os arquivos em RAM.
 #'
-#' @param python Executavel Python com o pacote sisab-extrator instalado.
+#' @param python Para extrair dados, "auto" usa o ambiente isolado criado por
+#'   sisab_instalar_motor(). Na instalacao, indica o Python base para criar esse
+#'   ambiente (padrao "python"). Um executavel explicito continua permitido.
 #' @param dados Diretorio local de dados e do catalogo SQLite.
 #' @param relatorio "federal", "municipal" ou "all".
 #' @param inicio Competencia AAAAMM ou "auto".
@@ -21,9 +23,26 @@
 #' @name sisabextrator
 NULL
 
-.sisab_python <- function(python) {
+.sisab_venv_dir <- function() {
+  file.path(tools::R_user_dir("sisabextrator", which = "data"), "venv")
+}
+
+.sisab_venv_python <- function() {
+  file.path(.sisab_venv_dir(), if (.Platform$OS.type == "windows") "Scripts" else "bin",
+            if (.Platform$OS.type == "windows") "python.exe" else "python")
+}
+
+.sisab_python <- function(python = "auto") {
   if (length(python) != 1L || is.na(python) || !nzchar(python)) {
-    stop("Informe o executavel Python, ex.: 'python' ou 'python3'.", call. = FALSE)
+    stop("Informe o executavel Python ou use 'auto'.", call. = FALSE)
+  }
+  if (identical(python, "auto")) {
+    executable <- .sisab_venv_python()
+    if (!file.exists(executable)) {
+      stop("Motor Python isolado nao encontrado. Execute sisab_instalar_motor() ",
+           "uma vez antes de inspecionar ou baixar dados.", call. = FALSE)
+    }
+    return(executable)
   }
   binary <- Sys.which(python)
   if (!nzchar(binary)) {
@@ -33,7 +52,7 @@ NULL
   unname(binary)
 }
 
-.sisab_cli <- function(comando, opcoes = character(), python = "python") {
+.sisab_cli <- function(comando, opcoes = character(), python = "auto") {
   py <- .sisab_python(python)
   args <- c("-m", "sisab_extrator", comando, opcoes)
   status <- suppressWarnings(system2(py, args = vapply(args, shQuote, character(1L)),
@@ -62,24 +81,46 @@ NULL
 #' @rdname sisabextrator
 #' @export
 sisab_instalar_motor <- function(python = "python", atualizar = FALSE) {
-  py <- .sisab_python(python)
+  # Nunca instalar no Python global: o PySUS pode exigir chardet incompatível
+  # com requests. Um ambiente exclusivo evita conflitos com outros projetos.
+  py_base <- .sisab_python(python)
+  dir_venv <- .sisab_venv_dir()
+  py_venv <- .sisab_venv_python()
+  if (!file.exists(py_venv)) {
+    dir.create(dirname(dir_venv), recursive = TRUE, showWarnings = FALSE)
+    message("Criando ambiente Python exclusivo do SISAB Extrator...")
+    args_venv <- c("-m", "venv", dir_venv)
+    status <- suppressWarnings(system2(
+      py_base, args = vapply(args_venv, shQuote, character(1L)),
+      stdout = "", stderr = ""
+    ))
+    if (!identical(as.integer(status), 0L) || !file.exists(py_venv)) {
+      stop("Nao foi possivel criar ambiente Python isolado. Verifique se ",
+           "o Python possui suporte ao modulo venv.", call. = FALSE)
+    }
+  }
   origem <- "git+https://github.com/maiconcarlospng/sisab-extrator.git"
   args <- c("-m", "pip", "install")
   if (isTRUE(atualizar)) {
-    # A versão Python pode permanecer igual entre commits: refazer a instalação.
-    # --no-deps evita reinstalar as bibliotecas já presentes no ambiente.
-    args <- c(args, "--upgrade", "--force-reinstall", "--no-deps")
+    # Atualiza o motor e suas dependencias, mas somente dentro do ambiente isolado.
+    args <- c(args, "--upgrade", "--force-reinstall")
   }
   args <- c(args, origem)
-  status <- suppressWarnings(system2(py, vapply(args, shQuote, character(1L)),
-                                      stdout = "", stderr = ""))
-  if (!identical(as.integer(status), 0L)) stop("Falha ao instalar pacote Python.", call. = FALSE)
+  status <- suppressWarnings(system2(
+    py_venv, args = vapply(args, shQuote, character(1L)),
+    stdout = "", stderr = ""
+  ))
+  if (!identical(as.integer(status), 0L)) {
+    stop("Falha ao instalar o motor no ambiente isolado. ",
+         "Confira as mensagens do pip acima.", call. = FALSE)
+  }
+  message("Motor SISAB instalado no ambiente isolado: ", py_venv)
   invisible(TRUE)
 }
 
 #' @rdname sisabextrator
 #' @export
-sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "python") {
+sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "auto") {
   .sisab_cli("probe", c("--report", match.arg(relatorio, c("federal", "municipal", "all")),
                         "--data-dir", dados), python)
 }
@@ -89,7 +130,7 @@ sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "p
 sisab_planejar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                            linhas = "all", colunas = "all", idades = "all",
                            sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
-                           pausa = 2, python = "python") {
+                           pausa = 2, python = "auto") {
   .sisab_cli("plan", .sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
                                  idades, sexos, aceitar_plano_grande, pausa), python)
 }
@@ -99,7 +140,7 @@ sisab_planejar <- function(inicio = "auto", fim = "auto", relatorio = "all",
 sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                          linhas = "all", colunas = "all", idades = "all",
                          sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
-                         consolidar = TRUE, pausa = 2, python = "python") {
+                         consolidar = TRUE, pausa = 2, python = "auto") {
   opts <- .sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
                       idades, sexos, aceitar_plano_grande, pausa)
   if (!isTRUE(consolidar)) opts <- c(opts, "--no-consolidate")
@@ -109,7 +150,7 @@ sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
 #' @rdname sisabextrator
 #' @export
 sisab_consolidar <- function(inicio, fim, dados = "data", permitir_parcial = FALSE,
-                              python = "python") {
+                              python = "auto") {
   opts <- c("--start", inicio, "--end", fim, "--data-dir", dados)
   if (isTRUE(permitir_parcial)) opts <- c(opts, "--allow-partial")
   .sisab_cli("consolidate", opts, python)
@@ -117,7 +158,7 @@ sisab_consolidar <- function(inicio, fim, dados = "data", permitir_parcial = FAL
 
 #' @rdname sisabextrator
 #' @export
-sisab_status <- function(inicio = NULL, fim = NULL, dados = "data", python = "python") {
+sisab_status <- function(inicio = NULL, fim = NULL, dados = "data", python = "auto") {
   opts <- c("--data-dir", dados)
   if (!is.null(inicio)) opts <- c(opts, "--start", inicio)
   if (!is.null(fim)) opts <- c(opts, "--end", fim)
