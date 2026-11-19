@@ -16,6 +16,8 @@
 #' @param sexos "both", "none", "Masculino" ou "Feminino".
 #' @param aceitar_plano_grande Autorizar mais de 10 mil consultas.
 #' @param pausa Pausa minima entre requisicoes HTTP (segundos).
+#' @param tempo_limite Tempo maximo de inatividade em cada requisicao HTTP (segundos, padrao 900).
+#' @param tentativas Numero de novas tentativas apos falhas (padrao 6).
 #' @param consolidar Consolidar automaticamente depois de baixar.
 #' @param permitir_parcial Aceitar serie com consultas pendentes ou com erro.
 #' @param ano Ano do Parquet anual ou NULL para abrir todos os anuais.
@@ -62,6 +64,21 @@ NULL
          "). Verifique o log acima e o resultado de sisab_inspecionar().", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+.sisab_network_opts <- function(tempo_limite, tentativas) {
+  if (length(tempo_limite) != 1L || is.na(tempo_limite) ||
+      !is.numeric(tempo_limite) || !is.finite(tempo_limite) ||
+      tempo_limite <= 0 || tempo_limite != as.integer(tempo_limite)) {
+    stop("'tempo_limite' deve ser um numero inteiro positivo de segundos.", call. = FALSE)
+  }
+  if (length(tentativas) != 1L || is.na(tentativas) ||
+      !is.numeric(tentativas) || !is.finite(tentativas) ||
+      tentativas < 0 || tentativas != as.integer(tentativas)) {
+    stop("'tentativas' deve ser um numero inteiro >= 0.", call. = FALSE)
+  }
+  c("--timeout", as.character(as.integer(tempo_limite)),
+    "--retries", as.character(as.integer(tentativas)))
 }
 
 .sisab_opts <- function(dados, relatorio, inicio, fim, linhas, colunas, idades,
@@ -120,9 +137,11 @@ sisab_instalar_motor <- function(python = "python", atualizar = FALSE) {
 
 #' @rdname sisabextrator
 #' @export
-sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "auto") {
-  .sisab_cli("probe", c("--report", match.arg(relatorio, c("federal", "municipal", "all")),
-                        "--data-dir", dados), python)
+sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "auto",
+                             tempo_limite = 900, tentativas = 6) {
+  opts <- c("--report", match.arg(relatorio, c("federal", "municipal", "all")),
+            "--data-dir", dados, .sisab_network_opts(tempo_limite, tentativas))
+  .sisab_cli("probe", opts, python)
 }
 
 #' @rdname sisabextrator
@@ -130,9 +149,11 @@ sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "a
 sisab_planejar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                            linhas = "all", colunas = "all", idades = "all",
                            sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
-                           pausa = 2, python = "auto") {
-  .sisab_cli("plan", .sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
-                                 idades, sexos, aceitar_plano_grande, pausa), python)
+                           pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6) {
+  opts <- c(.sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
+                        idades, sexos, aceitar_plano_grande, pausa),
+            .sisab_network_opts(tempo_limite, tentativas))
+  .sisab_cli("plan", opts, python)
 }
 
 #' @rdname sisabextrator
@@ -140,9 +161,11 @@ sisab_planejar <- function(inicio = "auto", fim = "auto", relatorio = "all",
 sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                          linhas = "all", colunas = "all", idades = "all",
                          sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
-                         consolidar = TRUE, pausa = 2, python = "auto") {
-  opts <- .sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
-                      idades, sexos, aceitar_plano_grande, pausa)
+                         consolidar = TRUE, pausa = 2, python = "auto",
+                         tempo_limite = 900, tentativas = 6) {
+  opts <- c(.sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
+                        idades, sexos, aceitar_plano_grande, pausa),
+            .sisab_network_opts(tempo_limite, tentativas))
   if (!isTRUE(consolidar)) opts <- c(opts, "--no-consolidate")
   .sisab_cli("download", opts, python)
 }
