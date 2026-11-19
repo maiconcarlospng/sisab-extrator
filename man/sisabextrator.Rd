@@ -14,8 +14,8 @@
 \usage{
 sisab_instalar_motor(python = "python", atualizar = FALSE)
 sisab_inspecionar(relatorio = "federal", dados = "data", python = "auto", tempo_limite = 900, tentativas = 6)
-sisab_planejar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6)
-sisab_baixar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6)
+sisab_planejar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6, tipo_producao = "none")
+sisab_baixar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6, tipo_producao = "none")
 sisab_consolidar(inicio, fim, dados = "data", permitir_parcial = FALSE, python = "auto")
 sisab_status(inicio = NULL, fim = NULL, dados = "data", python = "auto")
 sisab_abrir_anuais(dados = "data", ano = NULL)
@@ -29,6 +29,7 @@ sisab_filtrar_mg(ds)
 \item{dados}{Diretório de trabalho dos arquivos de dados.}
 \item{inicio, fim}{Competências AAAAMM; em consultas podem ser auto.}
 \item{linhas, colunas}{Opções exibidas por sisab_inspecionar, ou all.}
+\item{tipo_producao}{Filtro Tipo de Produção: rótulo/valor identificado na inspeção, "none" ou "all". É obrigatório quando a Linha/Coluna não contém Tipo de Produção e o portal exige essa seleção. A opção "all" cria consultas separadas por tipo.}
 \item{idades}{all, none ou rótulo de uma faixa etária.}
 \item{sexos}{both, none, Masculino ou Feminino.}
 \item{aceitar_plano_grande}{Autoriza planos com mais de 10.000 consultas.}
