@@ -1,5 +1,12 @@
 # Guia técnico e histórico da documentação
 
+> **Atualização (pacote R 0.2.1):** `sisab_instalar_motor()` agora cria
+> automaticamente um ambiente Python exclusivo, independente do PySUS.
+> `sisab_inspecionar()`, `sisab_planejar()`, `sisab_baixar()` e demais funções
+> passam a usar esse ambiente sem informar `python`. Comandos antigos deste
+> histórico podem descrever o funcionamento anterior. Veja o
+> [README atual](../README.md) para o procedimento recomendado.
+
 Este documento guarda as instruções completas da versão anterior do README, incluindo comandos Python, caminhos dos arquivos, detalhes do formato Parquet e limitações do extrator.
 
 Para uma introdução simples e passo a passo no RStudio, consulte o **[README principal](../README.md)**.
