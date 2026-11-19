@@ -27,4 +27,16 @@ if (!file.exists(venv_python)) {
   )
   stopifnot(grepl("sisab_instalar_motor()", erro, fixed = TRUE))
 }
+network_opts <- get(".sisab_network_opts", envir = ns)
+stopifnot(
+  identical(network_opts(120, 1), c("--timeout", "120", "--retries", "1")),
+  identical(network_opts(900, 0), c("--timeout", "900", "--retries", "0")),
+  identical(formals(sisab_baixar)$tempo_limite, 900),
+  identical(formals(sisab_baixar)$tentativas, 6)
+)
+invalid_timeout <- tryCatch(network_opts(0, 1), error = function(e) e)
+invalid_retry <- tryCatch(network_opts(120, -1), error = function(e) e)
+stopifnot(inherits(invalid_timeout, "error"), inherits(invalid_retry, "error"))
+cat("Configuracao de timeout e tentativas: OK\n")
+
 cat("Configuracao de Python isolado: OK\n")
