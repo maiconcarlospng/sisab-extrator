@@ -46,3 +46,52 @@ def test_unknown_field_fails_without_guessing():
     p = parse_page(HTML, URL)
     with pytest.raises(ValueError):
         p.coluna.choose("CID-10 nivel individual")
+
+
+def test_selects_report_form_instead_of_first_jsf_form():
+    html = (
+        '<html><head><title>Relatório de Saúde</title></head><body>'
+        '<form id="login"><input type="hidden" name="javax.faces.ViewState" value="LOGIN"></form>'
+        + HTML.replace('value="JSF123"', 'value="REPORT"') +
+        '</body></html>'
+    )
+    p = parse_page(html, URL)
+    assert p.form_id == "j_idt44"
+    assert p.view_state == "REPORT"
+
+
+def test_aliases_and_accented_field_identifiers():
+    html = (HTML.replace('name="form:competencia" id="form:competencia"',
+                         'name="form:competência" id="form:competência"')
+                .replace('id="selectLinha" name="selectLinha"',
+                         'id="form:linha" name="form:linha"')
+                .replace('id="selectcoluna" name="selectcoluna"',
+                         'id="form:coluna" name="form:coluna"'))
+    page = parse_page(html, URL)
+    assert page.linha.name == "form:linha"
+    assert page.coluna.name == "form:coluna"
+    assert "202401" in page.competencia.options
+
+
+def test_bad_html_creates_safe_diagnostic_file(tmp_path):
+    import json
+    from sisab_extrator.portal import Client
+
+    class Response:
+        url = "https://sisab.saude.gov.br/acesso/login.xhtml?token=sensitive"
+        status_code = 200
+        headers = {"Content-Type": "text/html"}
+        encoding = "utf-8"
+        text = ('<title>Entrar no sistema</title><form id="login">'
+                '<input type="hidden" name="javax.faces.ViewState" value="SECRET"></form>')
+
+    client = Client(URL, delay=0, diagnostics_dir=tmp_path)
+    client._request = lambda *args, **kwargs: Response()
+    with pytest.raises(PortalError, match="diagnostico_federal.json"):
+        client.open()
+    diagnostic = json.loads((tmp_path / "diagnostico_federal.json").read_text(encoding="utf-8"))
+    assert diagnostic["titulo_pagina"] == "Entrar no sistema"
+    assert diagnostic["url_recebida"].endswith("/acesso/login.xhtml")
+    assert diagnostic["formularios"][0]["id"] == "login"
+    assert "SECRET" not in json.dumps(diagnostic)
+    assert "sensitive" not in json.dumps(diagnostic)
