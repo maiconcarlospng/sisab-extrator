@@ -65,7 +65,11 @@ sisab_instalar_motor <- function(python = "python", atualizar = FALSE) {
   py <- .sisab_python(python)
   origem <- "git+https://github.com/maiconcarlospng/sisab-extrator.git"
   args <- c("-m", "pip", "install")
-  if (isTRUE(atualizar)) args <- c(args, "--upgrade")
+  if (isTRUE(atualizar)) {
+    # A versão Python pode permanecer igual entre commits: refazer a instalação.
+    # --no-deps evita reinstalar as bibliotecas já presentes no ambiente.
+    args <- c(args, "--upgrade", "--force-reinstall", "--no-deps")
+  }
   args <- c(args, origem)
   status <- suppressWarnings(system2(py, vapply(args, shQuote, character(1L)),
                                       stdout = "", stderr = ""))
