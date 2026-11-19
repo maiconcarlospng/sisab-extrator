@@ -15,11 +15,11 @@
 </p>
 
 <p align="center">
-  <a href="#o-que-ele-faz">Conheça o projeto</a> ·
-  <a href="#instalação-no-rstudio">Instale no R</a> ·
-  <a href="#primeiro-download">Primeiro download</a> ·
-  <a href="#onde-ficam-os-dados">Arquivos gerados</a> ·
-  <a href="#perguntas-frequentes">Dúvidas frequentes</a>
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#o-que-ele-faz">Conheça o projeto</a> ·
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#instala%C3%A7%C3%A3o-no-rstudio">Instale no R</a> ·
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#primeiro-download">Primeiro download</a> ·
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#onde-ficam-os-dados">Arquivos gerados</a> ·
+  <a href="https://github.com/maiconcarlospng/sisab-extrator#perguntas-frequentes">Dúvidas frequentes</a>
 </p>
 
 ---
@@ -33,7 +33,7 @@ A ideia é reduzir o trabalho manual de baixar muitos arquivos do portal e facil
 > [!IMPORTANT]
 > **Projeto experimental.** O pacote e sua organização de dados foram desenvolvidos e testados, mas a extração nos formulários reais do SISAB ainda precisa ser validada. As opções disponíveis dependem do portal. **Não são microdados de pacientes.**
 
-## ✨ O que ele faz?
+## O que ele faz?
 
 | | Recurso | Para que serve |
 |:--:|---|---|
@@ -56,7 +56,7 @@ O programa preserva o arquivo recebido do SISAB, gera Parquets por consulta e re
 
 ---
 
-## 🚀 Instalação no RStudio
+## Instalação no RStudio
 
 ### 1. Instale o pacote R
 
@@ -98,7 +98,7 @@ sisab_instalar_motor()
 
 Para **abrir Parquets já existentes**, esse motor Python não é necessário.
 
-## 🧪 Primeiro download
+## Primeiro download
 
 Recomendamos começar com **apenas uma competência**, para conferir como o SISAB responde.
 
@@ -167,7 +167,7 @@ Isso evita tentar carregar todos os anos de uma vez. Em bases muito grandes, **f
 
 **Atenção:** antes de somar `valor`, selecione o relatório e as mesmas dimensões de análise para não contar atendimentos em duplicidade.
 
-## 📁 Onde ficam os dados?
+## Onde ficam os dados?
 
 Ao baixar, o projeto cria a pasta `data/` no diretório de trabalho:
 
@@ -204,7 +204,7 @@ O modo `auto` consulta o intervalo de competências oferecido pelo portal. **Rev
 
 Depois de confirmar o plano, use `sisab_baixar()` com os mesmos parâmetros. Ao concluir os downloads, a ferramenta tenta consolidar os arquivos por ano e, por fim, pelo período completo. Se houver consultas pendentes ou com erro, a consolidação completa é bloqueada para evitar uma série incompleta apresentada como definitiva.
 
-## ❓ Perguntas frequentes
+## Perguntas frequentes
 
 <details>
 <summary><strong>O pacote já vem com todos os dados do Brasil?</strong></summary>
