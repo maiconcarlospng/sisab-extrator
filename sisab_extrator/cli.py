@@ -49,7 +49,8 @@ def selected_reports(args) -> dict[str, str]:
 
 
 def make_client(url: str, args) -> Client:
-    return Client(url, args.delay, args.timeout, args.retries, args.backoff)
+    return Client(url, args.delay, args.timeout, args.retries, args.backoff,
+                  diagnostics_dir=args.data_dir / "inspecao")
 
 
 def prepare(name: str, client: Client, page: Page, args) -> Prepared:
