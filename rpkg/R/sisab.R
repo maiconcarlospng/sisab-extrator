@@ -12,6 +12,9 @@
 #' @param fim Competencia AAAAMM ou "auto".
 #' @param linhas Rotulo/valor de linha ou "all".
 #' @param colunas Rotulo/valor de coluna ou "all".
+#' @param tipo_producao Rotulo/valor do filtro Tipo de Producao do SISAB,
+#'   "none" ou "all". Consulte as opcoes reais com sisab_inspecionar().
+#'   Evite "all" sem revisar se as combinacoes sao validas para a coluna.
 #' @param idades "all", "none" ou uma faixa etaria especifica.
 #' @param sexos "both", "none", "Masculino" ou "Feminino".
 #' @param aceitar_plano_grande Autorizar mais de 10 mil consultas.
@@ -82,7 +85,7 @@ NULL
 }
 
 .sisab_opts <- function(dados, relatorio, inicio, fim, linhas, colunas, idades,
-                        sexos, aceitar_plano_grande, pausa) {
+                        sexos, aceitar_plano_grande, pausa, tipo_producao = "none") {
   relatorio <- match.arg(relatorio, c("all", "federal", "municipal"))
   sexos <- match.arg(sexos, c("both", "none", "Masculino", "Feminino"))
   if (length(pausa) != 1L || !is.finite(pausa) || pausa < 0) {
@@ -90,7 +93,8 @@ NULL
   }
   opts <- c("--report", relatorio, "--start", inicio, "--end", fim,
             "--lines", linhas, "--columns", colunas, "--ages", idades,
-            "--sexes", sexos, "--data-dir", dados, "--delay", as.character(pausa))
+            "--sexes", sexos, "--production-type", tipo_producao,
+            "--data-dir", dados, "--delay", as.character(pausa))
   if (isTRUE(aceitar_plano_grande)) opts <- c(opts, "--allow-large-plan")
   opts
 }
@@ -149,9 +153,10 @@ sisab_inspecionar <- function(relatorio = "federal", dados = "data", python = "a
 sisab_planejar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                            linhas = "all", colunas = "all", idades = "all",
                            sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
-                           pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6) {
+                           pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6,
+                           tipo_producao = "none") {
   opts <- c(.sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
-                        idades, sexos, aceitar_plano_grande, pausa),
+                        idades, sexos, aceitar_plano_grande, pausa, tipo_producao),
             .sisab_network_opts(tempo_limite, tentativas))
   .sisab_cli("plan", opts, python)
 }
@@ -162,9 +167,10 @@ sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
                          linhas = "all", colunas = "all", idades = "all",
                          sexos = "both", dados = "data", aceitar_plano_grande = FALSE,
                          consolidar = TRUE, pausa = 2, python = "auto",
-                         tempo_limite = 900, tentativas = 6) {
+                         tempo_limite = 900, tentativas = 6,
+                         tipo_producao = "none") {
   opts <- c(.sisab_opts(dados, relatorio, inicio, fim, linhas, colunas,
-                        idades, sexos, aceitar_plano_grande, pausa),
+                        idades, sexos, aceitar_plano_grande, pausa, tipo_producao),
             .sisab_network_opts(tempo_limite, tentativas))
   if (!isTRUE(consolidar)) opts <- c(opts, "--no-consolidate")
   .sisab_cli("download", opts, python)
