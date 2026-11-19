@@ -203,29 +203,57 @@ def sniff_csv(content: bytes) -> bool:
     return any(sep in sample for sep in (b"Uf;Ibge;Municipio;", b"Uf;Ibge;Munic", b";"))
 
 
+def _safe_url(url: str) -> str:
+    """Remove parâmetros e fragmentos que possam conter identificadores sensíveis."""
+    parsed = urlparse(url)
+    return parsed._replace(query="", fragment="", params="").geturl()
+
+
 def _diagnostic_response(response, requested_url: str) -> dict:
-    """Dados seguros para depurar o HTML recebido, sem cookies e valores de campos."""
+    """Metadados seguros da resposta: não salva HTML nem valores de formulários."""
     soup = BeautifulSoup(response.text, "html.parser")
-    final_url = urlparse(getattr(response, "url", requested_url))
+    # Resumos de erro visíveis do JSF / PrimeFaces, sem copiar o HTML completo.
+    warnings = []
+    selectors = (
+        ".ui-messages-error-summary, .ui-messages-error-detail, "
+        ".ui-message-error, .ui-message-error-detail, "
+        ".ui-messages-warn-summary, .ui-messages-warn-detail, "
+        ".ui-growl-message, .alert-danger, [role='alert']"
+    )
+    for node in soup.select(selectors):
+        value = node.get_text(" ", strip=True)[:240]
+        if value and value not in warnings and len(warnings) < 12:
+            warnings.append(value)
     return {
-        "url_solicitada": requested_url,
-        "url_recebida": final_url._replace(query="", fragment="").geturl(),
+        "url_solicitada": _safe_url(requested_url),
+        "url_recebida": _safe_url(getattr(response, "url", requested_url)),
         "status_http": getattr(response, "status_code", None),
         "tipo_conteudo": response.headers.get("Content-Type", ""),
+        "tamanho_bytes": len(response.content),
         "titulo_pagina": soup.title.get_text(" ", strip=True)[:160] if soup.title else "",
+        "mensagens_portal": warnings,
         "formularios": [
             {"id": f.get("id", ""), "name": f.get("name", ""),
              "quantidade_selects": len(f.find_all("select"))}
             for f in soup.find_all("form")[:15]
         ],
         "selects": [
-            {"id": s.get("id", ""), "name": s.get("name", ""),
-             "quantidade_opcoes": len(s.find_all("option"))}
-            for s in soup.find_all("select")[:60]
+            {"id": select.get("id", ""), "name": select.get("name", ""),
+             "quantidade_opcoes": len(select.find_all("option"))}
+            for select in soup.find_all("select")[:60]
         ],
-        "aviso": ("O diagnóstico não inclui cookies, ViewState, texto completo "
-                  "da página ou valores de campos.")
+        "aviso": ("O diagnóstico não inclui cookies, ViewState, HTML completo "
+                  "ou valores de campos de formulário.")
     }
+
+
+def _diagnostic_label(url: str) -> str:
+    path = urlparse(url).path
+    if "/federal/" in path:
+        return "federal"
+    if "/municipio/" in path:
+        return "municipal"
+    return "personalizado"
 
 
 class Client:
@@ -290,9 +318,7 @@ class Client:
             if self.diagnostics_dir is not None:
                 try:
                     self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
-                    part = urlparse(self.url).path
-                    label = "federal" if "/federal/" in part else (
-                        "municipal" if "/municipio/" in part else "personalizado")
+                    label = _diagnostic_label(self.url)
                     target = self.diagnostics_dir / f"diagnostico_{label}.json"
                     target.write_text(
                         json.dumps(_diagnostic_response(resp, self.url),
@@ -303,6 +329,37 @@ class Client:
                 except OSError as write_exc:
                     message += f" Não foi possível gravar diagnóstico: {write_exc}."
             raise PortalError(message) from exc
+
+    def _save_export_diagnostic(self, response, job: Job, page: Page) -> Path | None:
+        """Registra uma exportação que devolveu HTML; não grava payload nem CSV."""
+        if self.diagnostics_dir is None:
+            return None
+        try:
+            self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"diagnostico_exportacao_{_diagnostic_label(self.url)}.json"
+            target = self.diagnostics_dir / filename
+            info = _diagnostic_response(response, self.url)
+            info["operacao"] = "exportacao_csv"
+            info["consulta"] = {
+                "competencia": job.competencia,
+                "linha": job.linha_label,
+                "coluna": job.coluna_label,
+                "sexo": job.sexo,
+                "faixa_etaria": job.faixa_etaria,
+            }
+            info["campos_enviados"] = {
+                "formulario": page.form_id,
+                "competencia": page.competencia.name,
+                "linha": page.linha.name,
+                "coluna": page.coluna.name,
+                "botao_csv": page.csv_button,
+            }
+            target.write_text(json.dumps(info, indent=2, ensure_ascii=False),
+                              encoding="utf-8")
+            return target
+        except OSError as exc:
+            LOG.warning("Nao foi possivel gravar diagnostico da exportacao: %s", exc)
+            return None
 
     def download(self, job: Job) -> bytes:
         page = self.page or self.open()
@@ -340,8 +397,17 @@ class Client:
             latin_text = response.content.decode("iso-8859-1", errors="replace")
             if "A consulta não retornou nenhum dado" in latin_text:
                 raise NoData(f"Consulta sem dados: {job.key}")
-            error = f"Resposta não-CSV ({response.headers.get('Content-Type')}); início: {raw_text[:160]!r}"
+            content_type = response.headers.get("Content-Type", "")
+            diagnostic = self._save_export_diagnostic(response, job, page)
+            diagnostic_text = f" Diagnóstico: {diagnostic}." if diagnostic else ""
+            error = (
+                f"O SISAB respondeu à exportação, mas devolveu {content_type!r} "
+                f"em vez de CSV ({len(response.content)} bytes)."
+                f"{diagnostic_text} Verifique se o filtro escolhido exige "
+                "outra configuração no formulário."
+            )
             if attempt < self.retries:
+                LOG.warning("%s Nova tentativa em seguida.", error)
                 time.sleep(min(self.backoff * (2 ** attempt), 120) + random.random())
                 self.open()
         raise PortalError(error or "SISAB não retornou CSV")
