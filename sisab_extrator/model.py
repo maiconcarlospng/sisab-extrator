@@ -58,6 +58,7 @@ class Job:
     sexo_valor: str
     tipo_producao: str = ""
     tipo_producao_label: str = ""
+    ciap_cid: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
@@ -66,6 +67,9 @@ class Job:
         if not self.tipo_producao:
             data.pop("tipo_producao")
             data.pop("tipo_producao_label")
+        # Selecoes CID diferentes nao devem sobrescrever arquivos anteriores.
+        if not self.ciap_cid:
+            data.pop("ciap_cid")
         return hashlib.sha256(
             json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()[:24]
