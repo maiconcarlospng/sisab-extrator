@@ -1,0 +1,30 @@
+# Verificacoes locais da interface R (sem rede nem acesso ao SISAB).
+library(sisabextrator)
+
+stopifnot(
+  identical(formals(sisab_instalar_motor)$python, "python"),
+  identical(formals(sisab_inspecionar)$python, "auto"),
+  identical(formals(sisab_planejar)$python, "auto"),
+  identical(formals(sisab_baixar)$python, "auto"),
+  identical(formals(sisab_consolidar)$python, "auto"),
+  identical(formals(sisab_status)$python, "auto")
+)
+
+ns <- asNamespace("sisabextrator")
+venv_python <- get(".sisab_venv_python", envir = ns)()
+stopifnot(
+  is.character(venv_python),
+  length(venv_python) == 1L,
+  grepl("venv", venv_python, fixed = TRUE),
+  basename(venv_python) == if (.Platform$OS.type == "windows") "python.exe" else "python"
+)
+
+# Se o ambiente ainda nao existir, o usuario recebe uma orientacao util.
+if (!file.exists(venv_python)) {
+  erro <- tryCatch(
+    get(".sisab_python", envir = ns)("auto"),
+    error = function(e) conditionMessage(e)
+  )
+  stopifnot(grepl("sisab_instalar_motor()", erro, fixed = TRUE))
+}
+cat("Configuracao de Python isolado: OK\n")
