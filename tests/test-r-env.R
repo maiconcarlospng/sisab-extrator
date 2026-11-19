@@ -19,14 +19,20 @@ stopifnot(
   basename(venv_python) == if (.Platform$OS.type == "windows") "python.exe" else "python"
 )
 
-# Se o ambiente ainda nao existir, o usuario recebe uma orientacao util.
-if (!file.exists(venv_python)) {
-  erro <- tryCatch(
-    get(".sisab_python", envir = ns)("auto"),
-    error = function(e) conditionMessage(e)
-  )
-  stopifnot(grepl("sisab_instalar_motor()", erro, fixed = TRUE))
-}
+# A verificacao do primeiro uso nunca faz instalacao em CI.
+stopifnot(
+  is.function(sisab),
+  is.function(sisab_visualizar),
+  is.function(get(".sisab_assegurar_motor", envir = ns)),
+  identical(get(".sisab_motor_min_version", envir = ns), "0.1.6"),
+  !get(".sisab_motor_pronto", envir = ns)(file.path(tempdir(), "inexistente.exe")),
+  identical(formals(sisab_baixar)$tipo_producao, "none")
+)
+erro <- tryCatch(sisab_visualizar(file.path(tempdir(), "nao-existe.parquet")),
+                 error = function(e) conditionMessage(e))
+stopifnot(grepl(".parquet existente", erro, fixed = TRUE))
+stopifnot(identical(get(".sisab_mes_valor", envir = ns)("202401"), "202401"))
+
 network_opts <- get(".sisab_network_opts", envir = ns)
 stopifnot(
   identical(network_opts(120, 1), c("--timeout", "120", "--retries", "1")),
