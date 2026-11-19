@@ -4,17 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sisab-extrator"
-version = "0.1.5"
-description = "Extrator configuravel dos relatorios publicos SISAB com Parquet e consolidacao anual/historica."
+version = "0.1.6"
+description = "Extrator configuravel de relatorios publicos agregados do SISAB com CSV, Parquet e consolidacao historica."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "Contribuidores do SISAB Extrator"}]
+authors = [{name = "Maicon Carlos", email = "143948074+maiconcarlospng@users.noreply.github.com"}]
+keywords = ["sisab", "atencao primaria", "saude publica", "csv", "parquet"]
 dependencies = [
     "beautifulsoup4>=4.12",
     "requests>=2.31",
     "pyarrow>=15.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/maiconcarlospng/sisab-extrator"
+Repository = "https://github.com/maiconcarlospng/sisab-extrator"
+Documentation = "https://github.com/maiconcarlospng/sisab-extrator#readme"
+Issues = "https://github.com/maiconcarlospng/sisab-extrator/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
