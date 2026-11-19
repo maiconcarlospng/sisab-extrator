@@ -150,3 +150,61 @@ def test_explicit_no_data_stays_no_data_without_diagnostic(tmp_path):
     with pytest.raises(NoData):
         client.download(example_job())
     assert not list(tmp_path.glob("diagnostico_exportacao_*.json"))
+
+
+def test_jsf_validation_stops_before_unnecessary_retries(tmp_path):
+    """HTTP 200 com mensagem de erro no formulário não deve fazer 7 POSTs."""
+    from sisab_extrator.portal import Client
+    from test_model import example_job
+
+    class Response:
+        url = URL
+        status_code = 200
+        headers = {"Content-Type": "text/html;charset=UTF-8"}
+        text = (
+            "<html><head><title>SISAB</title></head><body>"
+            "<div class='ui-messages-error-summary'>Selecione o filtro obrigatório.</div>"
+            "</body></html>"
+        )
+        content = text.encode("utf-8")
+
+    calls = []
+    client = Client(URL, delay=0, retries=6, diagnostics_dir=tmp_path)
+    client.page = parse_page(HTML, URL)
+
+    def fake_request(method, url, **kwargs):
+        calls.append(method)
+        return Response()
+
+    client._request = fake_request
+    with pytest.raises(PortalError, match="Selecione o filtro obrigatório"):
+        client.download(example_job())
+    assert calls == ["POST"]
+    assert (tmp_path / "diagnostico_exportacao_federal.json").exists()
+
+
+def test_repeated_html_stops_after_two_similar_responses(tmp_path):
+    """Sem mensagem visível, não insiste até sete vezes na mesma página."""
+    from sisab_extrator.portal import Client
+    from test_model import example_job
+
+    class Response:
+        url = URL
+        status_code = 200
+        headers = {"Content-Type": "text/html;charset=UTF-8"}
+        text = "<html><head><title>SISAB</title></head><body>Formulário</body></html>"
+        content = text.encode("utf-8")
+
+    calls = []
+    client = Client(URL, delay=0, retries=6, backoff=0, diagnostics_dir=tmp_path)
+    client.page = parse_page(HTML, URL)
+
+    def fake_request(method, url, **kwargs):
+        calls.append(method)
+        return Response()
+
+    # Depois do primeiro POST, a nova leitura do formulário deve ser bem-sucedida.
+    client._request = fake_request
+    with pytest.raises(PortalError, match="Duas respostas HTML consecutivas"):
+        client.download(example_job())
+    assert calls.count("POST") == 2
