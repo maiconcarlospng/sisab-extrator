@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -163,7 +164,25 @@ def cmd_plan(args) -> int:
             p.client.close()
 
 
+def _log_download_progress(done: int, total: int, success: int, skipped: int,
+                           failures: int, started: float) -> None:
+    """Progresso de consultas concluídas, não dos bytes no servidor."""
+    pct = 100.0 * done / total if total else 100.0
+    LOG.info(
+        "PROGRESSO: %d/%d consultas finalizadas (%.1f%%) | novas: %d | "
+        "reutilizadas/sem dados: %d | erros: %d | tempo decorrido: %.1fs",
+        done, total, pct, success, skipped, failures,
+        time.monotonic() - started,
+    )
+
+
+def _log_download_step(index: int, total: int, step: int, message: str) -> None:
+    LOG.info("Consulta %d/%d | ETAPA %d/5 | %s", index, total, step, message)
+
+
 def cmd_download(args) -> int:
+    started = time.monotonic()
+    LOG.info("FASE 1/4 | Abrindo relatório do SISAB e identificando filtros disponíveis...")
     prepared = prepared_reports(args)
     catalog = Catalog(args.data_dir)
     failures = 0
@@ -171,70 +190,116 @@ def cmd_download(args) -> int:
     skipped = 0
     try:
         count = guard_large(prepared, args)
-        LOG.info("Preparando %d consulta(s) do SISAB", count)
+        LOG.info("FASE 2/4 | Plano validado: %d consulta(s). Registrando no catálogo...", count)
         for p in prepared:
             catalog.add_jobs(p.jobs())
+        LOG.info("FASE 3/4 | Iniciando download e conversão em Parquet...")
         completed = 0
         for p in prepared:
             for job in p.jobs():
                 completed += 1
+                job_started = time.monotonic()
                 state = catalog.get(job.key)
                 destination = parquet_path(args.data_dir, job)
                 source = raw_path(args.data_dir, job)
                 if not args.force and state and state["status"] == "sem_dados":
                     skipped += 1
+                    LOG.info("Consulta %d/%d | sem dados já registrado; ignorando", completed, count)
+                    _log_download_progress(completed, count, success, skipped, failures, started)
                     continue
                 if (not args.force and state and state["status"] == "ok"
                         and destination.exists() and source.exists()):
                     skipped += 1
+                    LOG.info("Consulta %d/%d | arquivos já disponíveis; reutilizando", completed, count)
+                    _log_download_progress(completed, count, success, skipped, failures, started)
                     continue
+                stage = 1
                 try:
-                    LOG.info("Consulta %d/%d | %s | competência %s | linha %s | coluna %s",
-                             completed, count, p.name, job.competencia,
-                             job.linha_label, job.coluna_label)
+                    _log_download_step(
+                        completed, count, stage,
+                        f"{p.name} | mês {job.competencia} | linha {job.linha_label} | "
+                        f"coluna {job.coluna_label} | idade {job.faixa_etaria or 'sem filtro'} | "
+                        f"sexo {job.sexo or 'sem filtro'}",
+                    )
                     if not source.exists() or args.force:
-                        LOG.info("Aguardando exportação CSV do portal...")
+                        stage = 2
+                        _log_download_step(
+                            completed, count, stage,
+                            "Solicitando CSV ao SISAB; sem percentual enquanto o portal processa...",
+                        )
                         content = p.client.download(job)
-                        LOG.info("CSV recebido: %d bytes. Salvando arquivo original...", len(content))
+                        stage = 3
+                        _log_download_step(
+                            completed, count, stage,
+                            f"CSV recebido ({len(content):,} bytes); salvando ZIP original...",
+                        )
                         save_raw_zip(source, content, job)
                         del content
+                        LOG.info("Arquivo original salvo: %s", source)
                     else:
-                        LOG.info("Usando CSV já salvo, sem novo download")
-                    LOG.info("Convertendo CSV para Parquet...")
+                        stage = 3
+                        _log_download_step(completed, count, stage,
+                                           "CSV já salvo em ZIP; download dispensado")
+                    stage = 4
+                    _log_download_step(completed, count, stage,
+                                       "Lendo CSV e convertendo para Parquet em lotes...")
+
+                    def report_rows(rows: int) -> None:
+                        LOG.info("Consulta %d/%d | ETAPA 4/5 | %d linhas convertidas até agora",
+                                 completed, count, rows)
+
                     from .parquet import write_monthly_from_zip
-                    nr = write_monthly_from_zip(destination, source, job)
-                    catalog.update(job.key, "ok", raw=str(source), parquet=str(destination), linhas=nr)
-                    LOG.info("Consulta %d/%d concluída | %d registros Parquet",
-                             completed, count, nr)
+                    nr = write_monthly_from_zip(destination, source, job,
+                                                progress_callback=report_rows)
+                    catalog.update(job.key, "ok", raw=str(source),
+                                   parquet=str(destination), linhas=nr)
+                    stage = 5
+                    _log_download_step(
+                        completed, count, stage,
+                        f"Concluído: {nr:,} registros em {destination} "
+                        f"({time.monotonic() - job_started:.1f}s)",
+                    )
                     success += 1
                 except NoData:
                     catalog.update(job.key, "sem_dados", linhas=0)
                     skipped += 1
+                    LOG.info("Consulta %d/%d | SISAB informou ausência de dados",
+                             completed, count)
                 except Exception as exc:
-                    catalog.update(job.key, "erro", raw=str(source) if source.exists() else None,
+                    catalog.update(job.key, "erro",
+                                   raw=str(source) if source.exists() else None,
                                    erro=f"{type(exc).__name__}: {exc}")
                     failures += 1
-                    LOG.error("Falha na consulta %s (%s/%s): %s", job.key, completed, count, exc)
-                if completed % 10 == 0 or completed == count:
-                    print(f"Progresso {completed}/{count} | novos {success} | "
-                          f"ignorados/sem dados {skipped} | erros {failures}", flush=True)
-        print(f"Downloads: {success} novos, {skipped} reutilizados/sem dados, {failures} erros")
+                    LOG.error(
+                        "Consulta %d/%d | FALHOU na etapa %d/5 após %.1fs | %s: %s",
+                        completed, count, stage, time.monotonic() - job_started,
+                        type(exc).__name__, exc,
+                    )
+                _log_download_progress(completed, count, success, skipped,
+                                       failures, started)
+        LOG.info("FASE 3/4 finalizada | novos: %d | reutilizados/sem dados: %d | erros: %d",
+                 success, skipped, failures)
         if failures:
-            print("A consolidação automática será bloqueada até corrigir/repetir as consultas com erro.")
+            LOG.error("FASE 4/4 | Consolidação não iniciada: existem %d consulta(s) com erro.",
+                      failures)
+            LOG.info("Use 'sisab_status()' para revisar o catálogo; o diagnóstico fica "
+                     "na pasta data/inspecao quando o portal devolve HTML.")
             return 2
         if not args.no_consolidate:
-            LOG.info("Iniciando consolidação anual e da série histórica...")
+            LOG.info("FASE 4/4 | Consolidando arquivos anuais e série histórica...")
             from .parquet import consolidate
             actual_start = min(c for p in prepared for c in p.competencias)
             actual_end = max(c for p in prepared for c in p.competencias)
             manifest = consolidate(catalog, actual_start, actual_end)
-            print("Série histórica consolidada:", manifest["serie"]["arquivo"])
+            LOG.info("Série histórica salva em: %s", manifest["serie"]["arquivo"])
+        else:
+            LOG.info("FASE 4/4 | Consolidação desativada (consolidar = FALSE).")
+        LOG.info("FINALIZADO | Tempo total: %.1fs", time.monotonic() - started)
         return 0
     finally:
         catalog.close()
         for p in prepared:
             p.client.close()
-
 
 def cmd_consolidate(args) -> int:
     parse_month(args.start)
