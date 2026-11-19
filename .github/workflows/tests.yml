@@ -25,3 +25,5 @@ jobs:
         run: R CMD INSTALL rpkg
       - name: Conferir funcoes exportadas
         run: Rscript -e 'library(sisabextrator); stopifnot(is.function(sisab_baixar), is.function(sisab_abrir_anuais))'
+      - name: Testar uso do Python isolado
+        run: Rscript tests/test-r-env.R
