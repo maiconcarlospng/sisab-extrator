@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .model import AGE_GROUPS, REPORT_URLS, SEXES, Job, months, parse_month
-from .portal import Client, NoData, Page, PortalError, _field_identifier
+from .portal import Client, NoData, Page, PortalError, _field_identifier, _all_ciap_values
 from .storage import Catalog, parquet_path, raw_path, save_raw_zip
 
 LOG = logging.getLogger("sisab_extrator")
@@ -29,6 +29,7 @@ class Prepared:
     idades: list[tuple[str, int, int, str]]
     sexos: list[tuple[str, str]]
     tipos_producao: list[tuple[str, str]]
+    ciap_cid: tuple[str, ...] = ()
 
     @property
     def count(self) -> int:
@@ -43,7 +44,7 @@ class Prepared:
             yield Job(self.name, self.page.report_url, comp,
                       linha[0], linha[1], coluna[0], coluna[1],
                       age[0], age[1], age[2], age[3], sexo[0], sexo[1],
-                      producao[0], producao[1])
+                      producao[0], producao[1], self.ciap_cid)
 
 
 def selected_reports(args) -> dict[str, str]:
@@ -110,8 +111,21 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
         production_types = page.tipo_producao.choose(args.production_type)
         if not production_types:
             raise ValueError("Nenhuma opção de Tipo de Produção disponível.")
+    # CIAP/CID 'all' seleciona códigos/grupos reais do controle do portal
+    # em uma consulta, sem multiplicar o plano pelo número de códigos.
+    ciap_mode = getattr(args, "ciap_cid", "none")
+    if ciap_mode not in ("none", "all", "auto"):
+        raise ValueError("ciap_cid deve ser 'none', 'all' ou 'auto'.")
+    has_ciap_dimension = any(
+        value == "CID" or "ciapcid" in _field_identifier(label)
+        for value, label in linhas + colunas
+    )
+    requires_ciap = ciap_mode == "all" or (
+        ciap_mode == "auto" and has_ciap_dimension
+    )
+    ciap_cid = _all_ciap_values(page.ciap_cid) if requires_ciap else ()
     return Prepared(name, client, page, comps, linhas, colunas, ages, sexes,
-                    production_types)
+                    production_types, ciap_cid)
 
 
 def common(parser: argparse.ArgumentParser) -> None:
@@ -133,6 +147,10 @@ def add_filters(parser):
     parser.add_argument("--sexes", default="both", choices=["both", "none", "Masculino", "Feminino"])
     parser.add_argument("--production-type", default="none",
                         help="Filtro Tipo de Produção: rótulo/valor oferecido pelo SISAB, all ou none")
+    parser.add_argument("--ciap-cid", choices=("none", "auto", "all"), default="auto",
+                        help="auto: Todos ao escolher CIAP/CID na linha ou coluna; "
+                             "all: Todos explicitamente; none: sem seleção. "
+                             "Se a lista não estiver no HTML, interrompe sem enviar.")
     parser.add_argument("--allow-large-plan", action="store_true", help="Aceita mais de 10 mil consultas")
 
 
@@ -150,6 +168,12 @@ def cmd_probe(args) -> int:
                            page.tipo_producao.options.items() if value]
                 print("  Tipo de Produção disponível: " +
                       ", ".join(f"{label} (valor {value})" for value, label in options))
+            if page.ciap_cid:
+                print(f"  Filtro CIAP/CID: {len(_all_ciap_values(page.ciap_cid))} "
+                      f"valor(es) selecionável(is); campo {page.ciap_cid.name}")
+            else:
+                print("  Filtro CIAP/CID: sem opções estáticas identificáveis; "
+                      "pode exigir interação AJAX.")
     return 0
 
 
