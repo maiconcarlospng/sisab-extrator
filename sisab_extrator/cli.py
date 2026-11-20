@@ -317,7 +317,8 @@ def cmd_download_all(args) -> int:
         matrix_args.matrix_output = matrix
         matrix_args.validation_month = args.validation_month
         cmd_matrix(matrix_args)
-    args.lines = "all"
+    # Preserve a unidade geografica escolhida. "all" continua sendo
+    # o padrao para quem quer testar todas as linhas.
     args.columns = "all"
     args.ages = "none"
     args.sexes = "none"
