@@ -46,6 +46,7 @@ class Field:
     name: str
     id: str
     options: dict[str, str]
+    multiselect: bool = False
 
     def choose(self, selector: str) -> list[tuple[str, str]]:
         """Retorna (valor, rótulo); aceita valor, rótulo ou 'all'."""
@@ -95,7 +96,8 @@ class Page:
                 if self.tipo_producao else None
             ),
             "ciap_cid": (
-                {"name": self.ciap_cid.name, "options": self.ciap_cid.options}
+                {"name": self.ciap_cid.name, "options": self.ciap_cid.options,
+                 "multiselect": self.ciap_cid.multiselect}
                 if self.ciap_cid else None
             ),
             "outros_campos": self.other_fields,
@@ -144,7 +146,7 @@ def _extract_ciap_field(form) -> Field | None:
             options = {o.get("value", ""): o.get_text(" ", strip=True)
                        for o in select.find_all("option")}
             if any(options):
-                return Field(name, ident, options)
+                return Field(name, ident, options, multiselect=select.has_attr("multiple"))
 
     checkboxes = [item for item in form.find_all("input")
                   if item.get("type", "").casefold() == "checkbox"
@@ -156,7 +158,7 @@ def _extract_ciap_field(form) -> Field | None:
         options = {item.get("value", ""): item.get("data-label", item.get("value", ""))
                    for item in checkboxes if item.get("name") == name}
         if any(options):
-            return Field(name, first.get("id", ""), options)
+            return Field(name, first.get("id", ""), options, multiselect=True)
     return None
 
 
@@ -179,6 +181,12 @@ def _all_ciap_values(field: Field | None) -> tuple[str, ...]:
     for value, label in choices:
         if _field_identifier(label) in ("todos", "todas", "todososcodigos", "todasasopcoes"):
             return (value,)
+    if not field.multiselect:
+        raise PortalError(
+            "O campo CIAP/CID só aceita uma opção por vez e não oferece "
+            "um valor explícito 'Todos'. Não é seguro enviar várias opções "
+            "como se o controle fosse múltiplo; requer consultas separadas."
+        )
     return tuple(value for value, _ in choices)
 
 
