@@ -1,6 +1,6 @@
 Package: sisabextrator
 Title: Interface R para Extracao e Consulta de Dados Publicos do SISAB
-Version: 0.3.1
+Version: 0.3.2
 Authors@R: person(given = "Maicon", family = "Carlos", role = c("aut", "cre"), email = "143948074+maiconcarlospng@users.noreply.github.com")
 Description: Disponibiliza funcoes para executar o extrator Python de relatorios
     publicos agregados do SISAB, criar planos de consultas, baixar resultados,
