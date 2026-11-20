@@ -335,6 +335,28 @@ nenhum outro pacote Python instalado depende diretamente do extrator.
 
 Para **abrir Parquets já existentes**, o motor Python não é necessário.
 
+## Unidade Geográfica e CIAP/CID no menu
+
+Ao escolher **Baixar dados** no RStudio, o menu oferece **Unidade Geográfica**
+com as opções territoriais identificadas no relatório: Brasil, Região,
+Estado, Região de Saúde e Município. A escolha define o **nível de agregação
+da linha** (por exemplo, Município = `MUN.CO_MUNICIPIO_IBGE`), **não**
+um filtro que restringe a um município ou estado específico. A opção
+"Outra dimensão" mantém a escolha livre de linha.
+
+No modo **Baixar tudo (extração abrangente)**, é possível limitar as
+consultas a um nível geográfico ou manter todas as linhas. Quando ambos
+os relatórios são escolhidos, o menu oferece apenas os níveis geográficos
+comuns aos dois formulários.
+
+**CIAP/CID:** a página pública usa um modal com caixas individuais como
+`cid-W235-1`, cujo clique executa `addCid('W235-1')`. A função concatena
+`W235-1,` ao campo oculto `lsCid`. O extrator identifica esses IDs no HTML
+e envia a mesma lista terminada por vírgula em um único campo `lsCid`.
+Isso foi conferido no código JavaScript apresentado pelo usuário; a aceitação
+do filtro pelo servidor e a exportação CSV ainda exigem teste de integração
+com o SISAB real. **Não execute a extração abrangente antes de validar um mês.**
+
 ## Primeiro download
 
 **Filtro obrigatório (R 0.3.1 / motor Python 0.1.7):** o SISAB exige
