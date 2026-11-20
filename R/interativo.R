@@ -27,7 +27,20 @@ sisab <- function(dados = "data") {
     r <- utils::menu(relatorios, title = "Qual relatorio?")
     if (r == 0L) return(invisible(NULL))
     relatorio <- c("municipal", "federal", "all")[r]
-    sisab_baixar_tudo(relatorio = relatorio, dados = dados)
+    message("Consultando as unidades geograficas reais do portal SISAB...")
+    sisab_inspecionar(relatorio = if (identical(relatorio, "all")) "federal" else relatorio,
+                      dados = dados)
+    if (!requireNamespace("jsonlite", quietly = TRUE)) {
+      stop("Instale jsonlite para selecionar a unidade geografica.", call. = FALSE)
+    }
+    base <- if (identical(relatorio, "all")) "federal" else relatorio
+    info <- jsonlite::fromJSON(
+      file.path(dados, "inspecao", paste0(base, ".json")),
+      simplifyVector = FALSE
+    )
+    unidade <- .sisab_menu_unidade_geografica(info$linha$options, permitir_todas = TRUE)
+    message("Unidade geografica / linha escolhida: ", unidade$rotulo)
+    sisab_baixar_tudo(relatorio = relatorio, linhas = unidade$valor, dados = dados)
   }
   .sisab_menu_explorar <- function(dados) {
     relatorio <- c("federal", "municipal")[utils::menu(
@@ -70,6 +83,49 @@ sisab <- function(dados = "data") {
   }
 
   invisible(NULL)
+}
+
+
+.sisab_opcoes_geograficas <- function(options) {
+  # O nivel territorial e uma opcao de LINHA no relatorio Federal.
+  # Usar apenas IDs encontrados na inspecao real, sem inventar filtros.
+  ids <- c(
+    "BRASIL",
+    "ATD.CO_REGIAO",
+    "ATD.CO_UF_IBGE",
+    "REGSAU.CO_SEQ_REGIAO_SAUDE",
+    "MUN.CO_MUNICIPIO_IBGE"
+  )
+  options[ids[ids %in% names(options)]]
+}
+
+.sisab_menu_unidade_geografica <- function(options, permitir_todas = FALSE) {
+  unidades <- .sisab_opcoes_geograficas(options)
+  if (!length(unidades)) {
+    message("O relatorio nao apresentou unidades geograficas na linha; ",
+            "selecionando uma dimensao disponivel.")
+    return(.sisab_menu_escolher(options, "Selecione a linha do relatorio"))
+  }
+  valores <- unlist(unidades, use.names = TRUE)
+  opcoes <- paste0(unname(valores), " [", names(valores), "]")
+  alternativa <- if (permitir_todas) {
+    "Todas as linhas disponiveis (inclui dimensoes nao geograficas)"
+  } else {
+    "Outra dimensao (escolher linha manualmente)"
+  }
+  indice <- utils::menu(
+    c(opcoes, alternativa),
+    title = "Unidade Geografica - nivel de agregacao na linha"
+  )
+  if (indice == 0L) stop("Selecao cancelada.", call. = FALSE)
+  if (indice <= length(valores)) {
+    return(list(valor = names(valores)[indice],
+                rotulo = unname(valores)[indice]))
+  }
+  if (permitir_todas) {
+    return(list(valor = "all", rotulo = "Todas as linhas"))
+  }
+  .sisab_menu_escolher(options, "Selecione a linha do relatorio")
 }
 
 .sisab_menu_escolher <- function(options, titulo) {
@@ -123,7 +179,8 @@ sisab <- function(dados = "data") {
   path <- file.path(dados, "inspecao", paste0(relatorio, ".json"))
   info <- jsonlite::fromJSON(path, simplifyVector = FALSE)
 
-  linha <- .sisab_menu_escolher(info$linha$options, "Selecione a linha do relatorio")
+  linha <- .sisab_menu_unidade_geografica(info$linha$options)
+  message("Unidade geografica / linha: ", linha$rotulo)
   coluna <- .sisab_menu_escolher(info$coluna$options, "Selecione a coluna do relatorio")
   eh_tipo <- function(x) {
     valor <- iconv(x, from = "", to = "ASCII//TRANSLIT", sub = "")
@@ -144,9 +201,8 @@ sisab <- function(dados = "data") {
   if (ciap_cid == "all") {
     message("CIAP/CID: TODOS os codigos e grupos oferecidos pelo formulario.")
     if (is.null(info$ciap_cid) || !length(info$ciap_cid$options)) {
-      message("A lista CIAP/CID aparece depois da selecao da coluna. ",
-              "Tentaremos ativar o evento JSF do portal antes do download; ",
-              "se o evento nao for reconhecido, um diagnostico sera salvo.")
+      message("O SISAB possui um modal CIAP/CID; o extrator tentara identificar ",
+              "as selecoes e o campo lsCid no formulario antes do CSV.")
     }
   }
   message("Preparando download de ", inicio, " a ", fim,
