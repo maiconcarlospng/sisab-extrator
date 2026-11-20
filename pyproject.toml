@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sisab-extrator"
-version = "0.1.7"
+version = "0.1.8"
 description = "Extrator configuravel de relatorios publicos agregados do SISAB com CSV, Parquet e consolidacao historica."
 readme = "README.md"
 requires-python = ">=3.10"
