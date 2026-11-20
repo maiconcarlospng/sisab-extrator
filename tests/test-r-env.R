@@ -24,9 +24,11 @@ stopifnot(
   is.function(sisab),
   is.function(sisab_visualizar),
   is.function(get(".sisab_assegurar_motor", envir = ns)),
-  identical(get(".sisab_motor_min_version", envir = ns), "0.1.7"),
+  identical(get(".sisab_motor_min_version", envir = ns), "0.1.8"),
   !get(".sisab_motor_pronto", envir = ns)(file.path(tempdir(), "inexistente.exe")),
-  identical(formals(sisab_baixar)$tipo_producao, "none")
+  identical(formals(sisab_baixar)$tipo_producao, "none"),
+  identical(formals(sisab_baixar)$ciap_cid, "auto"),
+  identical(formals(sisab_planejar)$ciap_cid, "auto")
 )
 erro <- tryCatch(sisab_visualizar(file.path(tempdir(), "nao-existe.parquet")),
                  error = function(e) conditionMessage(e))
