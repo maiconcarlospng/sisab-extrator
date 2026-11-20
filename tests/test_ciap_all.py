@@ -111,3 +111,32 @@ def test_explicit_none_keeps_existing_queries_unchanged():
     page = parse_page(HTML, URL)
     job = next(prepare("federal", None, page, args(mode="none")).jobs())
     assert job.ciap_cid == ()
+
+
+def test_auto_only_applies_to_ciap_jobs_in_mixed_all_columns():
+    # Com todas as colunas selecionadas, os demais relatórios não devem
+    # receber indevidamente o filtro CIAP/CID.
+    html = with_ciap_control(
+        '<select name="lsCid" multiple>'
+        '<option value="A01">CIAP A01</option>'
+        '<option value="B02">CIAP B02</option></select>'
+    )
+    page = parse_page(html, URL)
+    a = args(mode="auto")
+    a.columns = "all"
+    plan = prepare("federal", None, page, a)
+    jobs = list(plan.jobs())
+    assert len(jobs) == 2
+    assert next(j for j in jobs if j.coluna == "CID").ciap_cid == ("A01", "B02")
+    assert next(j for j in jobs if j.coluna == "PROC").ciap_cid == ()
+
+
+def test_checkbox_based_ciap_multiselect_is_supported():
+    html = with_ciap_control(
+        '<input type="checkbox" name="lsCid" value="A01">'
+        '<input type="checkbox" name="lsCid" value="B02">'
+    )
+    page = parse_page(html, URL)
+    assert page.ciap_cid is not None
+    assert page.ciap_cid.multiselect
+    assert next(prepare("federal", None, page, args()).jobs()).ciap_cid == ("A01", "B02")
