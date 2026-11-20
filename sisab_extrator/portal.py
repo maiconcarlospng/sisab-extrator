@@ -330,8 +330,13 @@ def parse_page(html: str, report_url: str) -> Page:
     action = urljoin(report_url, form.get("action") or report_url)
     check_url(action)
     tipo_producao = _extract_field(form, "tpProducao")
-    ciap_cid = _extract_ciap_field(form)
     ciap_modal = _ciap_modal_summary(soup)
+    ciap_cid = _extract_ciap_field(form)
+    if ciap_modal is not None and ciap_cid is not None:
+        # Caixas com nomes cid-W235-1 NÃO são uma coleção de lsCid.
+        # Só reconhecemos um controle real com mesmo nome do campo oculto.
+        if ciap_cid.name != ciap_modal["campo_oculto"]:
+            ciap_cid = None
     return Page(report_url, action, form.get("id", ""), view["value"], comp, linha,
                 coluna, button, fields, hidden, tipo_producao=tipo_producao,
                 ciap_cid=ciap_cid, ciap_modal=ciap_modal)
