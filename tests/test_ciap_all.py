@@ -154,3 +154,37 @@ def test_hidden_modal_ciap_select_is_detected_from_context():
     assert page.ciap_cid is not None
     assert page.ciap_cid.name == "form:codigo"
     assert next(prepare("federal", None, page, args()).jobs()).ciap_cid == ("A01", "B02")
+
+
+def test_preloaded_ciap_modal_with_distinct_checkbox_names_is_diagnosed(tmp_path):
+    """Estrutura observada no SISAB: hidden lsCid + checkbox cid-W235-1."""
+    html = with_ciap_control(
+        '<input type="hidden" id="lsCid" name="lsCid" value="">'
+        '<div id="modal-default-cid" style="display:none">'
+        '<input type="checkbox" name="cid-W235-1" id="cid-W235-1" value="W235">'
+        '<input type="checkbox" name="cid-W236-1" id="cid-W236-1" value="W236">'
+        '<input type="checkbox" name="cid-N72-1" id="cid-N72-1" value="N72">'
+        '</div>'
+    )
+    page = parse_page(html, URL)
+    assert page.ciap_modal is not None
+    assert page.ciap_modal["quantidade_checkboxes"] == 3
+    assert page.ciap_modal["campo_oculto"] == "lsCid"
+    assert page.ciap_modal["serializacao_confirmada"] is False
+    assert page.ciap_cid is None
+
+    client = Client(URL, delay=0, retries=0, diagnostics_dir=tmp_path)
+    client.page = page
+    client._last_html = html
+
+    def fail_if_requested(*unused, **kwargs):
+        pytest.fail("Modal preloaded: não deve executar JSF/AJAX imaginário nem CSV")
+
+    client._request = fail_if_requested
+    with pytest.raises(PortalError, match="campo oculto lsCid"):
+        prepare("federal", client, page, args())
+    diagnostic = (tmp_path / "diagnostico_ciap_federal.json").read_text(
+        encoding="utf-8"
+    )
+    assert '"quantidade_checkboxes": 3' in diagnostic
+    assert "JSF123" not in diagnostic
