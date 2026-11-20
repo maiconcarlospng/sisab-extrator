@@ -76,7 +76,7 @@ O comando **`sisab()` abre um menu** com estas escolhas:
 No primeiro download, o programa cria um ambiente Python próprio e instala o
 motor automaticamente; quando detectar uma versão antiga do motor, atualiza-a
 sem alterar o Python utilizado por PySUS ou outros programas. Para baixar,
-você ainda precisa ter **Python 3.10+ e Git** instalados no computador.
+você precisa ter **Python 3.10+** instalado. Se o Git estiver ausente no Windows, o programa tenta instalá-lo pelo winget e, se não conseguir, instala o motor pelo ZIP do GitHub.
 Para apenas visualizar um Parquet, o programa instala os pacotes R
 `arrow` e `dplyr` na primeira utilização, caso estejam ausentes.
 
@@ -137,7 +137,7 @@ a interface de trabalho**, e o **Python faz a coleta e a geração dos Parquets*
 |---|---|---|
 | **R 4.0.0 ou superior** | Instalar e usar o pacote R | [Baixar R](https://cran.r-project.org/) |
 | **Python 3.10 ou superior** | Inspecionar o portal, planejar, baixar e converter os dados | Precisa estar acessível pelo comando `python`; deve incluir `pip` e o módulo `venv`. [Baixar Python](https://www.python.org/downloads/) |
-| **Git** | Instalar ou atualizar o motor Python direto do GitHub | Precisa estar acessível pelo comando `git`. [Baixar Git](https://git-scm.com/downloads) |
+| **Git (opcional)** | Acelerar a instalação do motor Python direto do GitHub | Se estiver ausente no Windows, o pacote tenta instalá-lo pelo `winget`; caso não consiga, utiliza o ZIP do GitHub sem exigir Git |
 | **Internet e acesso HTTPS** | Instalação e extração | A rede deve permitir acesso ao GitHub, ao PyPI (dependências Python) e a `sisab.saude.gov.br`. Para instalar pacotes R, também é preciso acessar o repositório R escolhido |
 | **Espaço em disco e permissão de escrita** | Guardar o ambiente Python isolado, CSV ZIP, Parquets e catálogo SQLite | O espaço necessário varia com os períodos e filtros selecionados; reserve espaço para downloads e consolidações |
 
@@ -165,26 +165,26 @@ if (!nzchar(programas[["python"]])) {
   stop("Python não encontrado. Instale Python 3.10+ e confira o PATH.")
 }
 if (!nzchar(programas[["git"]])) {
-  stop("Git não encontrado. Instale o Git e confira o PATH.")
+  message("Git não encontrado: o instalador tentará winget ou ZIP automaticamente.")
 }
 
 system2(programas[["python"]], "--version")
 system2(programas[["python"]], c("-m", "pip", "--version"))
-system2(programas[["git"]], "--version")
+if (nzchar(programas[["git"]])) system2(programas[["git"]], "--version")
 
 cat("Confira acima se o Python é 3.10 ou superior.\n")
 ```
 
 No **Windows**, durante a instalação do Python, habilite a opção de
 adicioná-lo ao `PATH`, quando disponível. Se você acabou de instalar Python
-ou Git e `Sys.which()` ainda estiver vazio, **feche e reabra o RStudio**.
+e `Sys.which()` ainda estiver vazio, **feche e reabra o RStudio**.
 Se `pip` ou `venv` não estiverem disponíveis, corrija a instalação do
 Python antes de executar `sisab_instalar_motor()`.
 
 **Não é necessário instalar manualmente** `requests`, `beautifulsoup4`,
 `pyarrow` ou alterar o `chardet` do PySUS: `sisab_instalar_motor()` cria
 um **ambiente Python separado** e instala as bibliotecas necessárias nele.
-Para apenas **ler Parquets já existentes pelo R**, Python, Git e acesso ao
+Para apenas **ler Parquets já existentes pelo R**, Python e acesso ao
 SISAB não são necessários; basta R e `arrow`.
 
 > **Acesso aos dados:** o projeto usa relatórios **públicos e agregados**.
@@ -215,22 +215,23 @@ sisab()
 
 **Como saber se a versão está atualizada?** Execute
 `packageVersion("sisabextrator")`. A versão com menu simplificado começou na **0.3.0**; a versão
-atual deste código é a **0.3.1**. Como o R-universe compila e publica independentemente do GitHub,
+atual deste código é a **0.3.2**. Como o R-universe compila e publica independentemente do GitHub,
 uma versão nova pode ainda não aparecer no repositório; a existência do
 pacote no R-universe não garante que a última versão já esteja publicada.
 
 ### Alternativa: GitHub (se o R-universe estiver desatualizado)
 
-Se a versão disponível for anterior à 0.3.1, ou se a instalação pelo
+Se a versão disponível for anterior à 0.3.2, ou se a instalação pelo
 R-universe falhar, instale diretamente do GitHub:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE)) {
   install.packages("remotes")
 }
-remotes::install_git(
-  "https://github.com/maiconcarlospng/sisab-extrator.git",
-  upgrade = "never"
+remotes::install_github(
+  "maiconcarlospng/sisab-extrator",
+  upgrade = "never",
+  force = TRUE
 )
 ```
 
@@ -242,12 +243,11 @@ library(sisabextrator)
 sisab()
 ```
 
-A instalação pelo GitHub requer o Git no computador. **Você não precisa
-usar os dois métodos:** escolha R-universe ou GitHub.
+A instalação alternativa com `remotes::install_github()` **não exige Git** no computador. **Você não precisa usar os dois métodos:** escolha R-universe ou GitHub.
 
 ### Motor Python: automático no primeiro download
 
-O R é a interface para usar o projeto. **A coleta dos dados é feita em Python**, portanto você precisará de **Python 3.10+ e Git** no computador.
+O R é a interface para usar o projeto. **A coleta dos dados é feita em Python**, portanto você precisará de **Python 3.10+** no computador. O Git é opcional e o pacote possui instalação automática pelo `winget` e alternativa por ZIP.
 
 Para quem utiliza **`sisab()`**, **`sisab_baixar()`**, `sisab_inspecionar()` ou
 `sisab_planejar()`, a instalação do motor Python é **automática no primeiro uso**.
@@ -435,7 +435,7 @@ enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
 Para receber o progresso detalhado e o filtro Tipo de Produção, use
-o pacote R **0.3.1** (o motor Python 0.1.7 será instalado ou atualizado
+o pacote R **0.3.2** (o motor Python 0.1.7 será instalado ou atualizado
 automaticamente no primeiro uso):
 
 ```r
@@ -619,7 +619,7 @@ Somente os códigos, agrupamentos e combinações que o SISAB disponibilizar. A 
 <details>
 <summary><strong>Preciso saber programar em Python?</strong></summary>
 
-Não. Você usa funções no RStudio; apenas precisa instalar Python e Git para executar os downloads. Para analisar arquivos Parquet já existentes, basta R com `arrow`.
+Não. Você usa funções no RStudio; basta ter Python 3.10+ para executar os downloads. O Git é opcional e, quando indisponível, o pacote tenta instalá-lo ou usa o ZIP do motor. Para analisar arquivos Parquet já existentes, basta R com `arrow`.
 </details>
 
 <details>
