@@ -21,11 +21,11 @@ install.packages(c("remotes", "arrow", "dplyr"))
 remotes::install_github("maiconcarlospng/sisab-extrator", subdir = "rpkg")
 library(sisabextrator)
 
-# Instala o motor Python no Python do sistema (Python 3.10+ e Git necessários).
+# Instala o motor num ambiente Python isolado (Git opcional; winget/ZIP como fallback).
 sisab_instalar_motor(python = "python")
 ```
 
-Se o executável Python se chamar `python3`, informe `python = "python3"` nas funções. É possível também instalar o motor fora do R com `python -m pip install git+https://github.com/maiconcarlospng/sisab-extrator.git`.
+Se o executável Python se chamar `python3`, informe `python = "python3"` nas funções. É possível também instalar o motor fora do R com `python -m pip install https://github.com/maiconcarlospng/sisab-extrator/archive/refs/heads/main.zip` (não exige Git).
 
 ## Descobrir opções antes de baixar
 
