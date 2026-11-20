@@ -30,6 +30,7 @@ class Prepared:
     sexos: list[tuple[str, str]]
     tipos_producao: list[tuple[str, str]]
     ciap_cid: tuple[str, ...] = ()
+    ciap_mode: str = "none"
 
     @property
     def count(self) -> int:
@@ -41,10 +42,18 @@ class Prepared:
             self.competencias, self.linhas, self.colunas, self.idades,
             self.sexos, self.tipos_producao,
         ):
+            ciap_dimension = any(
+                value == "CID" or "ciapcid" in _field_identifier(label)
+                for value, label in (linha, coluna)
+            )
+            ciap_values = self.ciap_cid if (
+                self.ciap_mode == "all" or
+                (self.ciap_mode == "auto" and ciap_dimension)
+            ) else ()
             yield Job(self.name, self.page.report_url, comp,
                       linha[0], linha[1], coluna[0], coluna[1],
                       age[0], age[1], age[2], age[3], sexo[0], sexo[1],
-                      producao[0], producao[1], self.ciap_cid)
+                      producao[0], producao[1], ciap_values)
 
 
 def selected_reports(args) -> dict[str, str]:
@@ -125,7 +134,7 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
     )
     ciap_cid = _all_ciap_values(page.ciap_cid) if requires_ciap else ()
     return Prepared(name, client, page, comps, linhas, colunas, ages, sexes,
-                    production_types, ciap_cid)
+                    production_types, ciap_cid, ciap_mode)
 
 
 def common(parser: argparse.ArgumentParser) -> None:
