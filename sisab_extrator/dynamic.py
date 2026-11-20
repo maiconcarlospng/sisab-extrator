@@ -8,7 +8,7 @@ import re
 from xml.etree import ElementTree
 
 
-def column_event(handler: str) -> dict[str, str] | None:
+def column_event(handler: str, source_id: str = "") -> dict[str, str] | None:
     """Extrai somente os parâmetros de handlers JSF reconhecidos."""
     if "PrimeFaces.ab(" in handler:
         opts = dict(re.findall(r"""(?:^|[,{\s])([sepu])\s*:\s*['"]([^'"]+)['"]""", handler))
@@ -21,23 +21,31 @@ def column_event(handler: str) -> dict[str, str] | None:
     if "jsf.ajax.request(" in handler:
         call = handler.split("jsf.ajax.request(", 1)[1]
         source = re.match(r"""\s*['"]([^'"]+)['"]""", call)
-        if source is None:
+        selected_source = source.group(1) if source is not None else (
+            source_id if re.match(r"\s*this\b", call) else ""
+        )
+        if not selected_source:
             return None
         opts = dict(re.findall(
             r"""(?:^|[,{\s])(execute|render|event)\s*:\s*['"]([^'"]+)['"]""", call
         ))
-        return dict(source=source.group(1), execute=opts.get("execute", "@this"),
+        return dict(source=selected_source, execute=opts.get("execute", "@this"),
                     render=opts.get("render", "@none"),
                     event=opts.get("event", "change"), framework="jsf")
 
     if "mojarra.ab(" in handler:
-        call = handler.split("mojarra.ab(", 1)[1]
-        values = re.findall(r"""['"]([^'"]+)['"]""", call.split(")", 1)[0])
-        if not values:
+        call = handler.split("mojarra.ab(", 1)[1].split(")", 1)[0]
+        # mojarra.ab(source, event, eventName, execute, render, ...)
+        args = re.findall(r"""(?:'[^']*'|"[^"]*"|\bthis\b|\bevent\b|\b\d+\b)""", call)
+        if len(args) < 5 or args[1] != "event":
             return None
-        return dict(source=values[0],
-                    execute=values[2] if len(values) > 2 else "@this",
-                    render=values[3] if len(values) > 3 else "@none",
+        def value(token):
+            return token[1:-1] if token.startswith(("'", '"')) else token
+        src = source_id if args[0] == "this" else value(args[0])
+        if not src:
+            return None
+        return dict(source=src, execute=value(args[3]) or "@this",
+                    render=value(args[4]) or "@none",
                     event="change", framework="mojarra")
 
     return None
