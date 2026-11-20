@@ -61,6 +61,64 @@ NULL
   ))
 }
 
+
+.sisab_git_encontrar <- function() {
+  git <- unname(Sys.which("git"))
+  if (nzchar(git)) return(git)
+  if (.Platform$OS.type != "windows") return("")
+  bases <- c(
+    Sys.getenv("ProgramFiles"),
+    Sys.getenv("ProgramFiles(x86)"),
+    file.path(Sys.getenv("LOCALAPPDATA"), "Programs")
+  )
+  bases <- bases[nzchar(bases)]
+  candidatos <- file.path(bases, "Git", "cmd", "git.exe")
+  encontrados <- candidatos[file.exists(candidatos)]
+  if (!length(encontrados)) return("")
+  normalizePath(encontrados[[1L]], winslash = "/", mustWork = FALSE)
+}
+
+.sisab_preparar_git <- function() {
+  git <- .sisab_git_encontrar()
+  if (!nzchar(git) && .Platform$OS.type == "windows") {
+    winget <- unname(Sys.which("winget"))
+    if (nzchar(winget)) {
+      message("Git nao encontrado. Tentando instalar automaticamente com winget...")
+      status <- tryCatch(suppressWarnings(system2(
+        winget,
+        args = c("install", "--id", "Git.Git", "--exact", "--source", "winget",
+                 "--accept-package-agreements", "--accept-source-agreements", "--silent"),
+        stdout = "", stderr = ""
+      )), error = function(e) {
+        message("Nao foi possivel executar winget: ", conditionMessage(e))
+        NA_integer_
+      })
+      if (!identical(as.integer(status), 0L)) {
+        message("Instalacao do Git indisponivel; tentando metodo sem Git.")
+      }
+      git <- .sisab_git_encontrar()
+    } else {
+      message("winget nao encontrado; tentando metodo sem Git.")
+    }
+  }
+  if (!nzchar(git)) return(FALSE)
+  # Atualiza o PATH desta sessao: o RStudio pode estar aberto desde antes
+  # da instalacao do Git e nao reconhecer o executavel novo.
+  pasta_git <- dirname(git)
+  pastas_path <- strsplit(Sys.getenv("PATH"), .Platform$path.sep, fixed = TRUE)[[1L]]
+  if (!pasta_git %in% pastas_path) {
+    Sys.setenv(PATH = paste(pasta_git, Sys.getenv("PATH"), sep = .Platform$path.sep))
+  }
+  TRUE
+}
+
+.sisab_origens_motor <- function() {
+  zip <- "https://github.com/maiconcarlospng/sisab-extrator/archive/refs/heads/main.zip"
+  if (!.sisab_preparar_git()) return(c(zip = zip))
+  c(git = "git+https://github.com/maiconcarlospng/sisab-extrator.git",
+    zip = zip)
+}
+
 .sisab_assegurar_motor <- function() {
   py <- .sisab_venv_python()
   if (.sisab_motor_pronto(py)) return(py)
@@ -155,23 +213,30 @@ sisab_instalar_motor <- function(python = "python", atualizar = FALSE) {
            "o Python possui suporte ao modulo venv.", call. = FALSE)
     }
   }
-  origem <- "git+https://github.com/maiconcarlospng/sisab-extrator.git"
   args <- c("-m", "pip", "install")
   if (isTRUE(atualizar)) {
     # Atualiza o motor e suas dependencias, mas somente dentro do ambiente isolado.
     args <- c(args, "--upgrade", "--force-reinstall")
   }
-  args <- c(args, origem)
-  status <- suppressWarnings(system2(
-    py_venv, args = vapply(args, shQuote, character(1L)),
-    stdout = "", stderr = ""
-  ))
-  if (!identical(as.integer(status), 0L)) {
-    stop("Falha ao instalar o motor no ambiente isolado. ",
-         "Confira as mensagens do pip acima.", call. = FALSE)
+  origens <- .sisab_origens_motor()
+  for (metodo in names(origens)) {
+    message("Instalando motor SISAB via ", metodo, "...")
+    args_instalar <- c(args, unname(origens[[metodo]]))
+    status <- tryCatch(suppressWarnings(system2(
+      py_venv, args = vapply(args_instalar, shQuote, character(1L)),
+      stdout = "", stderr = ""
+    )), error = function(e) {
+      message("Falha na tentativa via ", metodo, ": ", conditionMessage(e))
+      NA_integer_
+    })
+    if (identical(as.integer(status), 0L)) {
+      message("Motor SISAB instalado no ambiente isolado: ", py_venv)
+      return(invisible(TRUE))
+    }
+    message("Nao foi possivel instalar via ", metodo, ".")
   }
-  message("Motor SISAB instalado no ambiente isolado: ", py_venv)
-  invisible(TRUE)
+  stop("Falha ao instalar o motor no ambiente isolado pelos metodos disponiveis. ",
+       "Confira as mensagens do pip acima.", call. = FALSE)
 }
 
 #' @rdname sisabextrator
