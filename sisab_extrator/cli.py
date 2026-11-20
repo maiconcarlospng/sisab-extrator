@@ -83,6 +83,24 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
         raise PortalError(f"{name}: nenhuma competência disponível para {first}-{last}")
     linhas = page.linha.choose(args.lines)
     colunas = page.coluna.choose(args.columns)
+    matrix_path = getattr(args, "compatibility_matrix", None)
+    if matrix_path:
+        matrix = json.loads(Path(matrix_path).read_text(encoding="utf-8"))
+        allowed = {
+            (item["linha"], item["coluna"])
+            for item in matrix.get("combinacoes", [])
+            if item.get("status") == "valida"
+            and item.get("relatorio") == name
+        }
+        if not allowed:
+            raise PortalError(
+                f"{name}: a matriz de compatibilidade não contém combinações válidas: "
+                f"{matrix_path}"
+            )
+        linhas = [item for item in linhas if any((item[0], col[0]) in allowed for col in colunas)]
+        colunas = [item for item in colunas if any((row[0], item[0]) in allowed for row in linhas)]
+        if not linhas or not colunas:
+            raise PortalError(f"{name}: nenhum par linha × coluna válido na matriz.")
     if args.ages == "all":
         ages = AGE_GROUPS
     elif args.ages == "none":
@@ -113,7 +131,9 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
             )
         production_types = [("", "")]
     else:
-        if page.tipo_producao is None:
+        if page.tipo_producao is None and args.production_type == "all":
+            production_types = [("", "")]
+        elif page.tipo_producao is None:
             raise PortalError(
                 f"{name}: filtro Tipo de Produção não encontrado neste relatório."
             )
@@ -200,10 +220,112 @@ def cmd_probe(args) -> int:
                 tipo = "selecao multipla" if page.ciap_cid.multiselect else "selecao unica"
                 print(f"  Filtro CIAP/CID: {option_count} opcoes no HTML; "
                       f"campo {page.ciap_cid.name} ({tipo})")
+            elif page.ciap_modal:
+                print("  Filtro CIAP/CID: modal no HTML inicial com "
+                      f"{page.ciap_modal['quantidade_checkboxes']} checkboxes; "
+                      "campo oculto lsCid; formato de envio ainda não confirmado.")
             else:
                 print("  Filtro CIAP/CID: sem opções estáticas identificáveis; "
                       "pode exigir interação AJAX.")
     return 0
+
+
+def _matrix_job(name: str, page: Page, competencia: str, linha, coluna,
+                producao, ciap_cid=()) -> Job:
+    return Job(
+        report=name, url=page.report_url, competencia=competencia,
+        linha=linha[0], linha_label=linha[1], coluna=coluna[0],
+        coluna_label=coluna[1], faixa_etaria="", idade_inicio=0, idade_fim=0,
+        tp_idade="", sexo="", sexo_valor="", tipo_producao=producao[0],
+        tipo_producao_label=producao[1], ciap_cid=tuple(ciap_cid),
+    )
+
+
+def cmd_matrix(args) -> int:
+    """Valida pares linha × coluna em uma competência pequena e salva a matriz."""
+    output = args.matrix_output or args.data_dir / "inspecao" / "compatibilidade.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    combinacoes = []
+    for name, url in selected_reports(args).items():
+        with make_client(url, args) as client:
+            page = client.open()
+            available = sorted(v for v in page.competencia.options if v.isdigit() and len(v) == 6)
+            competencia = args.validation_month if args.validation_month != "auto" else available[0]
+            if competencia not in page.competencia.options:
+                raise PortalError(f"{name}: competência de validação indisponível: {competencia}")
+            linhas = page.linha.choose(args.lines)
+            colunas = page.coluna.choose(args.columns)
+            tipos = [("", "")]
+            if page.tipo_producao is not None:
+                tipos = page.tipo_producao.choose(
+                    "all" if args.production_type == "none" else args.production_type
+                )
+            ciap_values = ()
+            ciap_pair = next(
+                ((row, col) for row in linhas for col in colunas
+                 if col[0] == "CID" or "ciapcid" in _field_identifier(col[1])),
+                None,
+            )
+            if ciap_pair and page.ciap_cid is None:
+                client.reveal_ciap(
+                    linha=ciap_pair[0][0], coluna=ciap_pair[1][0],
+                    competencia=competencia, tipo_producao=tipos[0][0],
+                )
+            if ciap_pair:
+                ciap_values = _all_ciap_values(page.ciap_cid)
+            for linha in linhas:
+                for coluna in colunas:
+                    for producao in tipos:
+                        job = _matrix_job(
+                            name, page, competencia, linha, coluna, producao, ciap_values
+                        )
+                        item = {
+                            "relatorio": name, "competencia": competencia,
+                            "linha": linha[0], "linha_label": linha[1],
+                            "coluna": coluna[0], "coluna_label": coluna[1],
+                            "tipo_producao": producao[0],
+                            "tipo_producao_label": producao[1],
+                        }
+                        try:
+                            client.download(job)
+                            item["status"] = "valida"
+                        except NoData as exc:
+                            item["status"] = "sem_dados"
+                            item["mensagem"] = str(exc)
+                        except Exception as exc:
+                            item["status"] = "invalida"
+                            item["mensagem"] = f"{type(exc).__name__}: {exc}"
+                        combinacoes.append(item)
+                        print(f"{name}: {linha[1]} × {coluna[1]} × "
+                              f"{producao[1] or 'sem tipo'} = {item['status']}")
+    document = {
+        "gerado_em": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "competencia_validacao": args.validation_month,
+        "combinacoes": combinacoes,
+        "observacao": "A matriz registra respostas reais do portal; sem_dados não prova incompatibilidade.",
+    }
+    output.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Matriz gravada: {output} ({len(combinacoes)} testes)")
+    return 0
+
+
+def cmd_download_all(args) -> int:
+    """Baixa cobertura abrangente usando somente pares previamente validados."""
+    matrix = args.compatibility_matrix or args.data_dir / "inspecao" / "compatibilidade.json"
+    if not matrix.exists():
+        matrix_args = argparse.Namespace(**vars(args))
+        matrix_args.matrix_output = matrix
+        matrix_args.validation_month = args.validation_month
+        cmd_matrix(matrix_args)
+    # Preserve a unidade geografica escolhida. "all" continua sendo
+    # o padrao para quem quer testar todas as linhas.
+    args.columns = "all"
+    args.ages = "none"
+    args.sexes = "none"
+    args.production_type = "all"
+    args.ciap_cid = "auto"
+    args.compatibility_matrix = matrix
+    return cmd_download(args)
 
 
 def prepared_reports(args):
@@ -430,12 +552,29 @@ def build_parser() -> argparse.ArgumentParser:
     common(plan)
     add_filters(plan)
     plan.set_defaults(fn=cmd_plan)
+    matrix = commands.add_parser("matrix", help="Validar combinações reais linha × coluna")
+    common(matrix)
+    add_filters(matrix)
+    matrix.add_argument("--validation-month", default="auto")
+    matrix.add_argument("--matrix-output", type=Path)
+    matrix.set_defaults(fn=cmd_matrix)
     download = commands.add_parser("download", help="Baixar, normalizar e consolidar")
     common(download)
     add_filters(download)
     download.add_argument("--force", action="store_true", help="Ignora cache e refaz downloads")
     download.add_argument("--no-consolidate", action="store_true")
     download.set_defaults(fn=cmd_download)
+    all_download = commands.add_parser(
+        "download-all",
+        help="Baixar cobertura abrangente sem produto cartesiano não validado",
+    )
+    common(all_download)
+    add_filters(all_download)
+    all_download.add_argument("--validation-month", default="auto")
+    all_download.add_argument("--compatibility-matrix", type=Path)
+    all_download.add_argument("--force", action="store_true")
+    all_download.add_argument("--no-consolidate", action="store_true")
+    all_download.set_defaults(fn=cmd_download_all)
     consolidate = commands.add_parser("consolidate", help="Consolidar anuais e depois a série")
     consolidate.add_argument("--start", required=True)
     consolidate.add_argument("--end", required=True)

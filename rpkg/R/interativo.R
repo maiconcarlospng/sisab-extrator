@@ -15,22 +15,125 @@ sisab <- function(dados = "data") {
     stop("O menu sisab() requer uma sessao interativa do RStudio/R. ",
          "Em scripts, use sisab_baixar() ou sisab_visualizar().", call. = FALSE)
   }
+  .sisab_menu_baixar_tudo <- function(dados) {
+    resposta <- tolower(trimws(readline(
+      "Validar combinacoes em uma competencia e baixar todas as competencias? [s/N] "
+    )))
+    if (!identical(resposta, "s") && !identical(resposta, "sim")) {
+      message("Operacao cancelada.")
+      return(invisible(NULL))
+    }
+    relatorios <- c("Municipal", "Federal", "Todos")
+    r <- utils::menu(relatorios, title = "Qual relatorio?")
+    if (r == 0L) return(invisible(NULL))
+    relatorio <- c("municipal", "federal", "all")[r]
+    message("Consultando as unidades geograficas reais do portal SISAB...")
+    sisab_inspecionar(relatorio = relatorio, dados = dados)
+    if (!requireNamespace("jsonlite", quietly = TRUE)) {
+      stop("Instale jsonlite para selecionar a unidade geografica.", call. = FALSE)
+    }
+    base <- if (identical(relatorio, "all")) "federal" else relatorio
+    info <- jsonlite::fromJSON(
+      file.path(dados, "inspecao", paste0(base, ".json")),
+      simplifyVector = FALSE
+    )
+    if (identical(relatorio, "all")) {
+      outros <- jsonlite::fromJSON(
+        file.path(dados, "inspecao", "municipal.json"),
+        simplifyVector = FALSE
+      )
+      # Oferece apenas niveis territoriais presentes nos dois formularios.
+      comuns <- intersect(names(info$linha$options), names(outros$linha$options))
+      info$linha$options <- info$linha$options[comuns]
+    }
+    unidade <- .sisab_menu_unidade_geografica(info$linha$options, permitir_todas = TRUE)
+    message("Unidade geografica / linha escolhida: ", unidade$rotulo)
+    sisab_baixar_tudo(relatorio = relatorio, linhas = unidade$valor, dados = dados)
+  }
+  .sisab_menu_explorar <- function(dados) {
+    relatorio <- c("federal", "municipal")[utils::menu(
+      c("Federal", "Municipal"), title = "Qual relatorio?"
+    )]
+    if (is.na(relatorio)) return(invisible(NULL))
+    sisab_inspecionar(relatorio = relatorio, dados = dados)
+    message("Opcoes e campos reais salvos em ", file.path(dados, "inspecao"),
+            ". Use sisab_planejar() para montar uma consulta.")
+  }
+  .sisab_menu_consolidar <- function(dados) {
+    inicio <- .sisab_mes("Competencia inicial (AAAAMM): ")
+    fim <- .sisab_mes_valor(trimws(readline("Competencia final (AAAAMM): ")))
+    sisab_consolidar(inicio, fim, dados = dados)
+  }
+  .sisab_menu_configuracoes <- function(dados) {
+    message("Diretorio de dados atual: ", normalizePath(dados, mustWork = FALSE))
+    message("O motor Python isolado e configurado automaticamente no primeiro uso.")
+  }
   repeat {
     escolha <- utils::menu(
-      c("Baixar dados do SISAB", "Visualizar arquivo Parquet", "Ver status",
+      c("Baixar dados", "Baixar tudo (extracao abrangente)",
+        "Explorar filtros e combinacoes", "Consultar downloads e progresso",
+        "Visualizar arquivos Parquet", "Consolidar dados", "Configuracoes",
         "Sair"),
-      title = "SISAB Extrator — escolha uma acao"
+      title = "SISAB Extrator - escolha uma acao"
     )
-    if (escolha == 0L || escolha == 4L) break
+    if (escolha == 0L || escolha == 8L) break
     tryCatch(
       switch(escolha,
              .sisab_menu_baixar(dados),
+             .sisab_menu_baixar_tudo(dados),
+             .sisab_menu_explorar(dados),
+             sisab_status(dados = dados),
              sisab_visualizar(),
-             sisab_status(dados = dados)),
+             .sisab_menu_consolidar(dados),
+             .sisab_menu_configuracoes(dados)),
       error = function(e) message("SISAB Extrator: ", conditionMessage(e))
     )
   }
+
   invisible(NULL)
+}
+
+
+.sisab_opcoes_geograficas <- function(options) {
+  # O nivel territorial e uma opcao de LINHA no relatorio Federal.
+  # Usar apenas IDs encontrados na inspecao real, sem inventar filtros.
+  ids <- c(
+    "BRASIL",
+    "ATD.CO_REGIAO",
+    "ATD.CO_UF_IBGE",
+    "REGSAU.CO_SEQ_REGIAO_SAUDE",
+    "MUN.CO_MUNICIPIO_IBGE"
+  )
+  options[ids[ids %in% names(options)]]
+}
+
+.sisab_menu_unidade_geografica <- function(options, permitir_todas = FALSE) {
+  unidades <- .sisab_opcoes_geograficas(options)
+  if (!length(unidades)) {
+    message("O relatorio nao apresentou unidades geograficas na linha; ",
+            "selecionando uma dimensao disponivel.")
+    return(.sisab_menu_escolher(options, "Selecione a linha do relatorio"))
+  }
+  valores <- unlist(unidades, use.names = TRUE)
+  opcoes <- paste0(unname(valores), " [", names(valores), "]")
+  alternativa <- if (permitir_todas) {
+    "Todas as linhas disponiveis (inclui dimensoes nao geograficas)"
+  } else {
+    "Outra dimensao (escolher linha manualmente)"
+  }
+  indice <- utils::menu(
+    c(opcoes, alternativa),
+    title = "Unidade Geografica - nivel de agregacao na linha"
+  )
+  if (indice == 0L) stop("Selecao cancelada.", call. = FALSE)
+  if (indice <= length(valores)) {
+    return(list(valor = names(valores)[indice],
+                rotulo = unname(valores)[indice]))
+  }
+  if (permitir_todas) {
+    return(list(valor = "all", rotulo = "Todas as linhas"))
+  }
+  .sisab_menu_escolher(options, "Selecione a linha do relatorio")
 }
 
 .sisab_menu_escolher <- function(options, titulo) {
@@ -84,7 +187,8 @@ sisab <- function(dados = "data") {
   path <- file.path(dados, "inspecao", paste0(relatorio, ".json"))
   info <- jsonlite::fromJSON(path, simplifyVector = FALSE)
 
-  linha <- .sisab_menu_escolher(info$linha$options, "Selecione a linha do relatorio")
+  linha <- .sisab_menu_unidade_geografica(info$linha$options)
+  message("Unidade geografica / linha: ", linha$rotulo)
   coluna <- .sisab_menu_escolher(info$coluna$options, "Selecione a coluna do relatorio")
   eh_tipo <- function(x) {
     valor <- iconv(x, from = "", to = "ASCII//TRANSLIT", sub = "")
@@ -105,9 +209,8 @@ sisab <- function(dados = "data") {
   if (ciap_cid == "all") {
     message("CIAP/CID: TODOS os codigos e grupos oferecidos pelo formulario.")
     if (is.null(info$ciap_cid) || !length(info$ciap_cid$options)) {
-      message("A lista CIAP/CID aparece depois da selecao da coluna. ",
-              "Tentaremos ativar o evento JSF do portal antes do download; ",
-              "se o evento nao for reconhecido, um diagnostico sera salvo.")
+      message("O SISAB possui um modal CIAP/CID; o extrator tentara identificar ",
+              "as selecoes e o campo lsCid no formulario antes do CSV.")
     }
   }
   message("Preparando download de ", inicio, " a ", fim,

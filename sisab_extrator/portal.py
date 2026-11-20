@@ -48,6 +48,7 @@ class Field:
     id: str
     options: dict[str, str]
     multiselect: bool = False
+    serialization: str = "repeated"
 
     def choose(self, selector: str) -> list[tuple[str, str]]:
         """Retorna (valor, rótulo); aceita valor, rótulo ou 'all'."""
@@ -83,6 +84,7 @@ class Page:
     hidden_fields: list[tuple[str, str]]
     tipo_producao: Field | None = None
     ciap_cid: Field | None = None
+    ciap_modal: dict | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -98,9 +100,11 @@ class Page:
             ),
             "ciap_cid": (
                 {"name": self.ciap_cid.name, "options": self.ciap_cid.options,
-                 "multiselect": self.ciap_cid.multiselect}
+                 "multiselect": self.ciap_cid.multiselect,
+                 "serialization": self.ciap_cid.serialization}
                 if self.ciap_cid else None
             ),
+            "ciap_modal": self.ciap_modal,
             "outros_campos": self.other_fields,
             "botao_csv_identificado": bool(self.csv_button),
         }
@@ -136,22 +140,47 @@ def _extract_ciap_field(form) -> Field | None:
     Formulários com widget AJAX que não apresenta opções no HTML inicial
     precisarão de integração específica; nesse caso não enviaremos lsCid vazio.
     """
-    def is_ciap(name: str, ident: str) -> bool:
+    def is_ciap(name: str, ident: str, text: str = "") -> bool:
         key = _field_identifier(name + " " + ident)
-        return any(term in key for term in ("lscid", "ciapcid", "selectcid", "filtrocid"))
+        context = _field_identifier(text)
+        return (
+            any(term in key for term in
+                ("lscid", "ciapcid", "selectcid", "filtrocid", "listacid", "listacodigo"))
+            or "ciapcid" in context
+            or "codigociap" in context
+            or "codigocid" in context
+        )
 
     for select in form.find_all("select"):
         name = select.get("name", "")
         ident = select.get("id", "")
-        if is_ciap(name, ident) and name:
-            options = {o.get("value", ""): o.get_text(" ", strip=True)
-                       for o in select.find_all("option")}
+        options_nodes = select.find_all("option")
+        options = {o.get("value", ""): o.get_text(" ", strip=True)
+                   for o in options_nodes}
+        parent = select.parent
+        parent_marker = ""
+        if parent is not None:
+            parent_marker = " ".join(
+                [parent.get("id", ""), " ".join(parent.get("class", []))]
+            )
+        context = " ".join([select.get_text(" ", strip=True), parent_marker])
+        code_like = any(
+            re.match(r"^(?:[A-Z]\d{2,3}|[A-Z]\d{2}(?:\.\d+)?)$", value.strip(), re.I)
+            for value in options
+            if value
+        )
+        if (is_ciap(name, ident) or
+                (code_like and any(term in _field_identifier(context)
+                                   for term in ("ciap", "cid")))) and name:
             if any(options):
                 return Field(name, ident, options, multiselect=select.has_attr("multiple"))
 
     checkboxes = [item for item in form.find_all("input")
                   if item.get("type", "").casefold() == "checkbox"
-                  and is_ciap(item.get("name", ""), item.get("id", ""))
+                  and is_ciap(
+                      item.get("name", ""), item.get("id", ""),
+                      item.parent.get_text(" ", strip=True) if item.parent else "",
+                  )
                   and item.get("name")]
     if checkboxes:
         first = checkboxes[0]
@@ -161,6 +190,93 @@ def _extract_ciap_field(form) -> Field | None:
         if any(options):
             return Field(name, first.get("id", ""), options, multiselect=True)
     return None
+
+
+
+def _ciap_modal_summary(soup) -> dict | None:
+    """Documenta códigos do modal que NÃO constituem valores enviados em lsCid.
+
+    O SISAB renderiza caixas com IDs individuais (cid-W235-1, etc.), mas
+    usa um campo oculto lsCid para exportação. Sem descobrir a serialização
+    JavaScript, não podemos assumir que repetir lsCid seja equivalente.
+    """
+    hidden = soup.find("input", attrs={
+        "name": "lsCid", "type": re.compile(r"^hidden$", re.I),
+    })
+    if hidden is None:
+        return None
+    code_ids = []
+    code_pattern = re.compile(r"^(?:cid|ciap)-([A-Z0-9]+)-\d+$", re.I)
+    for element in soup.find_all("input", attrs={"type": re.compile(r"^checkbox$", re.I)}):
+        code_id = element.get("id", "")
+        if code_pattern.fullmatch(code_id):
+            code_ids.append(code_id)
+    if not code_ids:
+        return None
+    modal = soup.find(id=re.compile(r"modal.*(?:ciap|cid)", re.I))
+    return {
+        "campo_oculto": hidden.get("name"),
+        "quantidade_checkboxes": len(code_ids),
+        "exemplos_ids": code_ids[:5],
+        "modal_encontrado": modal is not None,
+        "serializacao_confirmada": False,
+        "aviso": (
+            "Os checkboxes possuem nomes individuais. O JavaScript que "
+            "preenche lsCid deve ser identificado antes de exportar CSV."
+        ),
+    }
+
+
+
+def _extract_ciap_modal_field(soup) -> Field | None:
+    """Lê o modal real do SISAB, respeitando a implementação de addCid().
+
+    O HTML do portal declara:
+        onclick="addCid('W235-1')"
+        lsCid += cid+",";
+        document.getElementById('lsCid').value = lsCid;
+    Portanto o POST possui UM campo lsCid com IDs separados por vírgula
+    e vírgula final, e não milhares de pares (lsCid, valor).
+    """
+    hidden = soup.find("input", attrs={"name": "lsCid",
+                                      "type": re.compile(r"^hidden$", re.I)})
+    if hidden is None:
+        return None
+    scripts = "\n".join(node.get_text() for node in soup.find_all("script")
+                        if not node.get("src"))
+    # Apenas reconhecer a serialização quando o JavaScript local a comprova.
+    has_function = re.search(r"\bfunction\s+addCid\s*\(\s*cid\s*\)", scripts)
+    adds_csv_token = re.search(
+        r"""\blsCid\s*\+=\s*cid\s*\+\s*['"],['"]\s*;?""", scripts
+    )
+    writes_hidden = re.search(
+        r"""document\.getElementById\(\s*['"]lsCid['"]\s*\)\.value\s*=\s*lsCid\b""",
+        scripts,
+    )
+    if not (has_function and adds_csv_token and writes_hidden):
+        return None
+
+    options: dict[str, str] = {}
+    onclick_pattern = re.compile(r"""^\s*addCid\(\s*['"]([A-Za-z0-9]+-\d+)['"]\s*\)\s*;?\s*$""")
+    for checkbox in soup.find_all("input", attrs={"type": re.compile(r"^checkbox$", re.I)}):
+        cid_id = checkbox.get("id", "")
+        if not cid_id.startswith("cid-"):
+            continue
+        matched = onclick_pattern.fullmatch(checkbox.get("onclick", ""))
+        if not matched:
+            continue
+        token = matched.group(1)
+        if cid_id != "cid-" + token:
+            continue
+        parent = checkbox.find_parent("label")
+        label = (parent.get_text(" ", strip=True) if parent else "") or token
+        options[token] = label
+    if not options:
+        return None
+    return Field(name=hidden["name"], id=hidden.get("id", "lsCid"),
+                 options=options, multiselect=True,
+                 serialization="comma_trailing")
+
 
 
 def _all_ciap_values(field: Field | None) -> tuple[str, ...]:
@@ -268,10 +384,22 @@ def parse_page(html: str, report_url: str) -> Page:
     action = urljoin(report_url, form.get("action") or report_url)
     check_url(action)
     tipo_producao = _extract_field(form, "tpProducao")
+    ciap_modal = _ciap_modal_summary(soup)
     ciap_cid = _extract_ciap_field(form)
+    if ciap_modal is not None:
+        # Preferir a semântica comprovada do campo oculto à interpretação
+        # equivocada dos checkboxes com names individuais.
+        modal_field = _extract_ciap_modal_field(soup)
+        if modal_field is not None:
+            ciap_cid = modal_field
+            ciap_modal["serializacao_confirmada"] = True
+            ciap_modal["quantidade_selecionavel"] = len(modal_field.options)
+            ciap_modal["formato_envio"] = "lsCid = W235-1,W236-1,...,"
+        elif ciap_cid is not None and ciap_cid.name != ciap_modal["campo_oculto"]:
+            ciap_cid = None
     return Page(report_url, action, form.get("id", ""), view["value"], comp, linha,
                 coluna, button, fields, hidden, tipo_producao=tipo_producao,
-                ciap_cid=ciap_cid)
+                ciap_cid=ciap_cid, ciap_modal=ciap_modal)
 
 
 def sniff_csv(content: bytes) -> bool:
@@ -421,6 +549,26 @@ class Client:
         page = self.page or self.open()
         if page.ciap_cid is not None:
             return page.ciap_cid
+        if page.ciap_modal is not None:
+            target = (self.diagnostics_dir /
+                      f"diagnostico_ciap_{_diagnostic_label(self.url)}.json"
+                      if self.diagnostics_dir is not None else None)
+            if target is not None:
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps({
+                        "operacao": "inspecionar_modal_ciap_cid",
+                        "modal": page.ciap_modal,
+                        "motivo": "Serializacao de lsCid pelo JavaScript ainda desconhecida.",
+                    }, ensure_ascii=False, indent=2), encoding="utf-8")
+                except OSError as exc:
+                    LOG.warning("Diagnostico CIAP/CID nao salvo: %s", exc)
+            raise PortalError(
+                "O modal CIAP/CID já contém checkboxes no HTML, mas o campo "
+                "oculto lsCid precisa ser preenchido como o JavaScript do SISAB "
+                "determina. A exportação foi interrompida antes do POST; "
+                f"diagnóstico: {target or 'não configurado'}."
+            )
         soup = BeautifulSoup(self._last_html, "html.parser")
         form = next((f for f in soup.find_all("form")
                      if f.get("id") == page.form_id), None)
@@ -620,7 +768,11 @@ class Client:
             if job.sexo_valor:
                 payload.append(("sexo", job.sexo_valor))
             if job.ciap_cid:
-                payload.extend((page.ciap_cid.name, value) for value in job.ciap_cid)
+                if page.ciap_cid.serialization == "comma_trailing":
+                    # Reproduz addCid(): um único lsCid, vírgula após cada token.
+                    payload.append((page.ciap_cid.name, ",".join(job.ciap_cid) + ","))
+                else:
+                    payload.extend((page.ciap_cid.name, value) for value in job.ciap_cid)
             # Não enviar lsCid vazio: quando CIAP/CID é uma dimensão,
             # o SISAB pode exigir valores efetivamente selecionados.
             if "lsSigtap" not in fields:

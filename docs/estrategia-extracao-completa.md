@@ -24,14 +24,14 @@ Produto cartesiano ingenuo: 163 competencias x 29 linhas x 24 colunas x 18 idade
 
 As linhas desta matriz sao HIPOTESES de validacao, nao comprovacoes do comportamento do portal.
 
-## Fases propostas (modo Baixar tudo ainda NAO implementado)
+## Fases implementadas pelo modo Baixar tudo
 
 1. **Descoberta**: catalogar opcoes de competencias, linhas, colunas e filtros condicionais; detectar se Todos e selecao multipla, opcao explicita ou widget AJAX.
-2. **Matriz de compatibilidade**: testar uma competencia pequena por cruzamento candidato, e registrar valida, rejeitada ou sem dados. HTTP 200 com HTML nao e CSV.
-3. **Plano minimo de cobertura**: preferir geografia mais granular quando suficiente para a pesquisa; distinguir totais e subtotais, para nao somar eventos duplicados. Usar separacoes por idade e sexo apenas quando necessario e disponiveis.
-4. **Execucao incremental**: blocos mensais, pausas entre pedidos, retries somente para falhas temporarias, registro SQLite e retomada; nunca iniciar milhoes de consultas automaticamente.
-5. **Auditoria**: guardar ZIP original, Parquet, parametros de consulta e resumo de meses, categorias e codigos realmente retornados, consultas sem dados e com erro.
-6. **Atualizacoes**: priorizar novas competencias e reprocessar periodos historicos apenas quando houver indicios de retificacao.
+2. **Matriz de compatibilidade**: `matrix` testa uma competencia pequena, exige CSV real para marcar `valida` e registra HTML de erro como `invalida`.
+3. **Plano minimo de cobertura**: `download-all` usa somente pares válidos da matriz e não multiplica idade/sexo automaticamente.
+4. **Execucao incremental**: blocos mensais, pausas, retries, registro SQLite e retomada; o cache evita baixar novamente ZIPs e Parquets concluídos.
+5. **Auditoria**: guarda ZIP original, Parquet, parâmetros de consulta, matriz, consultas sem dados e diagnósticos sem cookies ou ViewStates.
+6. **Atualizacoes**: gere uma nova matriz quando o portal alterar suas opções ou quando quiser validar outra competência.
 
 ## CIAP/CID
 
