@@ -288,6 +288,9 @@ sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
 
 #' Baixar cobertura abrangente usando combinações validadas
 #'
+#' @param linhas Na extração abrangente, nível geográfico como valor de linha
+#'   (ex.: "MUN.CO_MUNICIPIO_IBGE") ou "all" para todas as linhas.
+#'
 #' O modo completo valida pares linha x coluna em uma competência de amostra,
 #' grava a matriz em `dados/inspecao/compatibilidade.json` e só então baixa
 #' competências usando os pares aceitos. Idade e sexo não são multiplicados
@@ -300,8 +303,10 @@ sisab_baixar_tudo <- function(inicio = "auto", fim = "auto", relatorio = "all",
                               consolidar = TRUE, pausa = 2, python = "auto",
                               tempo_limite = 900, tentativas = 6,
                               mes_validacao = "auto",
-                              matriz_compatibilidade = NULL) {
+                              matriz_compatibilidade = NULL,
+                              linhas = "all") {
   opts <- c("--report", match.arg(relatorio, c("all", "federal", "municipal")),
+            "--lines", linhas,
             "--start", inicio, "--end", fim, "--data-dir", dados,
             "--delay", as.character(pausa),
             "--validation-month", mes_validacao,
