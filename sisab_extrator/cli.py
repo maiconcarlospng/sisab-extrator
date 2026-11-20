@@ -132,6 +132,24 @@ def prepare(name: str, client: Client, page: Page, args) -> Prepared:
     requires_ciap = ciap_mode == "all" or (
         ciap_mode == "auto" and has_ciap_dimension
     )
+    if requires_ciap and page.ciap_cid is None and client is not None:
+        # A lista CIAP/CID pode surgir apenas DEPOIS da mudança da coluna.
+        # Antes de pedir o CSV, ativamos o evento JSF conhecido uma única vez.
+        ciap_pair = next(
+            ((row, col) for row in linhas for col in colunas
+             if col[0] == "CID" or "ciapcid" in _field_identifier(col[1])),
+            None,
+        )
+        if ciap_pair is None:
+            raise PortalError(
+                "CIAP/CID não é a coluna escolhida; a seleção dinâmica "
+                "automática ainda exige CIAP/CID na coluna."
+            )
+        client.reveal_ciap(
+            linha=ciap_pair[0][0], coluna=ciap_pair[1][0],
+            competencia=comps[0],
+            tipo_producao=production_types[0][0],
+        )
     ciap_cid = _all_ciap_values(page.ciap_cid) if requires_ciap else ()
     return Prepared(name, client, page, comps, linhas, colunas, ages, sexes,
                     production_types, ciap_cid, ciap_mode)
