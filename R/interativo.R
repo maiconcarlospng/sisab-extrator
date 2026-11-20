@@ -28,8 +28,7 @@ sisab <- function(dados = "data") {
     if (r == 0L) return(invisible(NULL))
     relatorio <- c("municipal", "federal", "all")[r]
     message("Consultando as unidades geograficas reais do portal SISAB...")
-    sisab_inspecionar(relatorio = if (identical(relatorio, "all")) "federal" else relatorio,
-                      dados = dados)
+    sisab_inspecionar(relatorio = relatorio, dados = dados)
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
       stop("Instale jsonlite para selecionar a unidade geografica.", call. = FALSE)
     }
@@ -38,6 +37,15 @@ sisab <- function(dados = "data") {
       file.path(dados, "inspecao", paste0(base, ".json")),
       simplifyVector = FALSE
     )
+    if (identical(relatorio, "all")) {
+      outros <- jsonlite::fromJSON(
+        file.path(dados, "inspecao", "municipal.json"),
+        simplifyVector = FALSE
+      )
+      # Oferece apenas niveis territoriais presentes nos dois formularios.
+      comuns <- intersect(names(info$linha$options), names(outros$linha$options))
+      info$linha$options <- info$linha$options[comuns]
+    }
     unidade <- .sisab_menu_unidade_geografica(info$linha$options, permitir_todas = TRUE)
     message("Unidade geografica / linha escolhida: ", unidade$rotulo)
     sisab_baixar_tudo(relatorio = relatorio, linhas = unidade$valor, dados = dados)
