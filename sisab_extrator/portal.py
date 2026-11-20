@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from .model import Job
+from .dynamic import column_event, response_fragments
 
 
 LOG = logging.getLogger("sisab_extrator.portal")
@@ -347,6 +348,7 @@ class Client:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "sisab-extrator/0.1 (pesquisa; acesso a relatorios publicos)"})
         self.page: Page | None = None
+        self._last_html = ""
         self.diagnostics_dir = Path(diagnostics_dir) if diagnostics_dir is not None else None
 
     def __enter__(self):
@@ -390,6 +392,7 @@ class Client:
         resp = self._request("GET", self.url)
         resp.encoding = resp.encoding or "utf-8"
         try:
+            self._last_html = resp.text
             self.page = parse_page(resp.text, self.url)
             return self.page
         except PortalError as exc:
@@ -408,6 +411,121 @@ class Client:
                 except OSError as write_exc:
                     message += f" Não foi possível gravar diagnóstico: {write_exc}."
             raise PortalError(message) from exc
+
+    def reveal_ciap(self, linha: str, coluna: str, competencia: str,
+                    tipo_producao: str = "") -> Field:
+        """Dispara somente o onchange JSF identificado da coluna CIAP/CID.
+
+        Não solicita CSV, e não inventa seletores ou valores de códigos.
+        """
+        page = self.page or self.open()
+        if page.ciap_cid is not None:
+            return page.ciap_cid
+        soup = BeautifulSoup(self._last_html, "html.parser")
+        form = next((f for f in soup.find_all("form")
+                     if f.get("id") == page.form_id), None)
+        select = next((t for t in form.find_all("select")
+                       if t.get("name") == page.coluna.name), None) if form else None
+        handler = select.get("onchange", "") if select else ""
+        event = column_event(handler or "")
+        info = {
+            "operacao": "ativar_coluna_ciap_cid",
+            "campo_coluna": page.coluna.name,
+            "eventos_coluna": {
+                "onchange": bool(handler), "onchange_tamanho": len(handler or ""),
+                "framework_identificado": event["framework"] if event else None,
+            },
+            "resposta": None, "atualizacoes": [], "codigos_detectados": 0,
+        }
+        target = (self.diagnostics_dir /
+                  f"diagnostico_ciap_{_diagnostic_label(self.url)}.json"
+                  if self.diagnostics_dir is not None else None)
+
+        def save_diagnostic():
+            if target is None:
+                return
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+            except OSError as exc:
+                LOG.warning("Diagnostico CIAP/CID nao salvo: %s", exc)
+
+        if event is None:
+            info["motivo"] = (
+                "A coluna CIAP/CID pode depender de JavaScript, mas o "
+                "manipulador AJAX da coluna não foi identificado."
+            )
+            save_diagnostic()
+            raise PortalError(
+                "CIAP/CID aparece após selecionar a coluna, mas o evento de "
+                "atualização não foi identificado. "
+                f"Diagnóstico: {target or 'não configurado'}."
+            )
+        payload = [(k, v) for k, v in page.hidden_fields
+                   if k != "javax.faces.ViewState"]
+        payload.extend([
+            (page.form_id, page.form_id),
+            ("javax.faces.ViewState", page.view_state),
+            (page.competencia.name, competencia),
+            (page.linha.name, linha),
+            (page.coluna.name, coluna),
+            (page.tipo_producao.name if page.tipo_producao else "tpProducao",
+             tipo_producao),
+            ("javax.faces.partial.ajax", "true"),
+            ("javax.faces.source", event["source"]),
+            ("javax.faces.partial.execute", event["execute"]),
+            ("javax.faces.partial.render", event["render"]),
+            ("javax.faces.behavior.event", event["event"]),
+            ("javax.faces.partial.event", event["event"]),
+        ])
+        response = self._request(
+            "POST", page.action, data=payload,
+            headers={"Faces-Request": "partial/ajax",
+                     "X-Requested-With": "XMLHttpRequest"},
+        )
+        response.encoding = response.encoding or "utf-8"
+        info["resposta"] = response.headers.get("Content-Type", "")
+        try:
+            fragments, view_state, updates = response_fragments(response.text)
+        except Exception as exc:
+            info["motivo"] = "Resposta JSF parcial inválida."
+            save_diagnostic()
+            raise PortalError(
+                f"Falha ao interpretar atualização de CIAP/CID: {exc}"
+            ) from exc
+        info["atualizacoes"] = updates
+        field = None
+        for fragment in fragments:
+            parsed = BeautifulSoup(fragment, "html.parser")
+            field = _extract_ciap_field(parsed)
+            if field:
+                if view_state is None:
+                    new_view = parsed.find(
+                        "input", attrs={"name": "javax.faces.ViewState"}
+                    )
+                    if new_view:
+                        view_state = new_view.get("value")
+                break
+        if field is None:
+            info["motivo"] = (
+                "O evento JSF foi processado, mas a resposta não trouxe "
+                "uma lista CIAP/CID reconhecível. Pode existir outra etapa."
+            )
+            save_diagnostic()
+            raise PortalError(
+                "A seleção da coluna não revelou códigos CIAP/CID reconhecíveis. "
+                f"Diagnóstico: {target or 'não configurado'}."
+            )
+        info["codigos_detectados"] = sum(bool(v) for v in field.options)
+        page.ciap_cid = field
+        if view_state:
+            page.view_state = view_state
+        info["motivo"] = "Opções CIAP/CID identificadas após seleção da coluna."
+        save_diagnostic()
+        LOG.info("Filtro CIAP/CID ativado: %d opcoes.",
+                 info["codigos_detectados"])
+        return field
 
     def _save_export_diagnostic(self, response, job: Job, page: Page,
                                 details: dict | None = None) -> Path | None:
