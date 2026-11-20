@@ -105,10 +105,9 @@ sisab <- function(dados = "data") {
   if (ciap_cid == "all") {
     message("CIAP/CID: TODOS os codigos e grupos oferecidos pelo formulario.")
     if (is.null(info$ciap_cid) || !length(info$ciap_cid$options)) {
-      stop("O SISAB nao apresentou opcoes CIAP/CID no HTML inicial. ",
-           "O extrator nao vai enviar lsCid vazio e repetir o erro. ",
-           "Consulte data/inspecao/", relatorio, ".json para diagnosticar ",
-           "se o filtro depende de JavaScript/AJAX.", call. = FALSE)
+      message("A lista CIAP/CID aparece depois da selecao da coluna. ",
+              "Tentaremos ativar o evento JSF do portal antes do download; ",
+              "se o evento nao for reconhecido, um diagnostico sera salvo.")
     }
   }
   message("Preparando download de ", inicio, " a ", fim,
