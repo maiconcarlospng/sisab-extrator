@@ -97,12 +97,27 @@ sisab <- function(dados = "data") {
     tipo_producao <- tipo$valor
     message("Tipo de Producao escolhido: ", tipo$rotulo)
   }
+  eh_ciap <- function(x, rotulo) {
+    identical(x, "CID") || grepl("ciap/cid", tolower(rotulo), fixed = TRUE)
+  }
+  ciap_cid <- if (eh_ciap(linha$valor, linha$rotulo) ||
+                  eh_ciap(coluna$valor, coluna$rotulo)) "all" else "none"
+  if (ciap_cid == "all") {
+    message("CIAP/CID: TODOS os codigos e grupos oferecidos pelo formulario.")
+    if (is.null(info$ciap_cid) || !length(info$ciap_cid$options)) {
+      stop("O SISAB nao apresentou opcoes CIAP/CID no HTML inicial. ",
+           "O extrator nao vai enviar lsCid vazio e repetir o erro. ",
+           "Consulte data/inspecao/", relatorio, ".json para diagnosticar ",
+           "se o filtro depende de JavaScript/AJAX.", call. = FALSE)
+    }
+  }
   message("Preparando download de ", inicio, " a ", fim,
           " | ", relatorio, " | ", linha$rotulo, " x ", coluna$rotulo)
   sisab_baixar(
     inicio = inicio, fim = fim, relatorio = relatorio,
     linhas = linha$valor, colunas = coluna$valor,
     tipo_producao = tipo_producao,
+    ciap_cid = ciap_cid,
     idades = "none", sexos = "none",
     dados = dados
   )
