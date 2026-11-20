@@ -427,7 +427,7 @@ class Client:
         select = next((t for t in form.find_all("select")
                        if t.get("name") == page.coluna.name), None) if form else None
         handler = select.get("onchange", "") if select else ""
-        event = column_event(handler or "")
+        event = column_event(handler or "", select.get("id", "") if select else "")
         info = {
             "operacao": "ativar_coluna_ciap_cid",
             "campo_coluna": page.coluna.name,
