@@ -215,13 +215,13 @@ sisab()
 
 **Como saber se a versão está atualizada?** Execute
 `packageVersion("sisabextrator")`. A versão com menu simplificado começou na **0.3.0**; a versão
-atual deste código é a **0.3.2**. Como o R-universe compila e publica independentemente do GitHub,
+atual deste código é a **0.3.3**. Como o R-universe compila e publica independentemente do GitHub,
 uma versão nova pode ainda não aparecer no repositório; a existência do
 pacote no R-universe não garante que a última versão já esteja publicada.
 
 ### Alternativa: GitHub (se o R-universe estiver desatualizado)
 
-Se a versão disponível for anterior à 0.3.2, ou se a instalação pelo
+Se a versão disponível for anterior à 0.3.3, ou se a instalação pelo
 R-universe falhar, instale diretamente do GitHub:
 
 ```r
@@ -435,7 +435,7 @@ enquanto uma consulta com `idades = "none"` e `sexos = "none"` no
 SISAB Extrator tenta um resultado mais amplo, que pode ser mais pesado.
 
 Para receber o progresso detalhado e o filtro Tipo de Produção, use
-o pacote R **0.3.2** (o motor Python 0.1.7 será instalado ou atualizado
+o pacote R **0.3.3** (o motor Python 0.1.8 será instalado ou atualizado
 automaticamente no primeiro uso):
 
 ```r
@@ -670,10 +670,36 @@ e **Tipo de Produção = Atendimento Individual** retornou a mensagem real:
 
 Isso confirma que escolher `CIAP/CID` na coluna **não basta**: o relatório
 também espera ao menos um código ou grupo **no filtro CIAP/CID**.
-O extrator **ainda não implementa essa seleção**, porque precisamos
-identificar como o formulário JSF envia os itens escolhidos. Não use
-`tipo_producao` como substituto de CIAP/CID e não continue tentando o
-mesmo download sem alterar a seleção.
+O pacote R **0.3.3** e o motor Python **0.1.8** agora incluem
+`ciap_cid = "all"`: ele reconhece os códigos oferecidos por
+**um seletor múltiplo HTML** ou uma opção explícita **Todos**, e os envia
+na mesma consulta quando o formulário aceita esse formato.
+O valor `ciap_cid = "auto"` (padrão) ativa Todos quando CIAP/CID
+é a linha ou coluna escolhida; no menu `sisab()`, a opção Todos é automática.
+
+**Limitação importante:** alguns controles podem carregar seus códigos por
+JavaScript/AJAX, sem apresentar opções no HTML inicial. Nesse caso, o extrator
+interrompe a consulta **antes de enviar um POST inválido**, com uma mensagem
+explicando a necessidade de mapear o controle dinâmico. Ainda falta validar a
+exportação no SISAB real. Não considere o modo Todos comprovado até receber
+CSV e conferir os códigos presentes.
+
+Exemplo de consulta com intenção de obter todos os CIAP/CID disponíveis:
+
+```r
+sisab_baixar(
+  inicio = "202401", fim = "202402", relatorio = "federal",
+  linhas = "Municipio", colunas = "CIAP/CID",
+  tipo_producao = "Atendimento Individual",
+  ciap_cid = "all",
+  idades = "none", sexos = "none"
+)
+```
+
+`ciap_cid = "all"` significa todos os códigos/grupos oferecidos
+**para este relatório e recorte**, não todos os códigos teóricos das
+classificações CIAP-2 e CID-10; a disponibilidade depende do portal.
+Não use `tipo_producao` como substituto de CIAP/CID.
 
 **Para inspecionar os controles CIAP/CID sem iniciar downloads:**
 
@@ -701,10 +727,11 @@ campos_ciap <- Filter(
 cat(jsonlite::toJSON(campos_ciap, pretty = TRUE, auto_unbox = TRUE))
 ```
 
-O resultado revela nomes e tipos dos campos detectáveis no HTML inicial,
-mas **não necessariamente os códigos selecionáveis**: o portal pode
-carregá-los por JavaScript/AJAX. É preciso confirmar esse mecanismo antes
-de adicionar o parâmetro de seleção e o menu para CIAP/CID.
+O resultado revela nomes e tipos dos campos detectáveis no HTML inicial.
+Na versão 0.3.3, os códigos identificados em seletores estáticos são
+reconhecidos e o parâmetro `ciap_cid` está disponível no menu e nas funções.
+Se o portal carregar os códigos por JavaScript/AJAX, precisamos mapear
+o mecanismo antes de implementar a extração completa deste caso.
 
 ### Quando o console repete "HTML em vez de CSV"
 
@@ -779,9 +806,11 @@ Você também pode abrir o arquivo na aba **Files** do RStudio.
 Para localizar a pasta criada pelo download, use `getwd()`.
 O seletor não faz o download: ele abre um arquivo **já existente** no computador.
 
-A opção `CIAP/CID` pode depender de filtros adicionais. O fato de ela aparecer
-na lista de colunas não garante que o servidor aceite a exportação. Antes de
-alterar o envio de dados, é preciso verificar esse diagnóstico.
+A opção `CIAP/CID` depende de um filtro próprio em certas consultas.
+A versão 0.3.3 tenta selecionar Todos com base nas opções reais do HTML;
+se a seleção exigir JavaScript/AJAX, interrompe sem afirmar que o CSV foi gerado.
+A presença de CIAP/CID entre as colunas ainda não comprova que a exportação
+será aceita pelo portal.
 
 ## 📚 Documentação e contribuições
 
