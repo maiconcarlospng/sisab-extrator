@@ -83,6 +83,7 @@ class Page:
     hidden_fields: list[tuple[str, str]]
     tipo_producao: Field | None = None
     ciap_cid: Field | None = None
+    ciap_modal: dict | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -101,6 +102,7 @@ class Page:
                  "multiselect": self.ciap_cid.multiselect}
                 if self.ciap_cid else None
             ),
+            "ciap_modal": self.ciap_modal,
             "outros_campos": self.other_fields,
             "botao_csv_identificado": bool(self.csv_button),
         }
@@ -186,6 +188,41 @@ def _extract_ciap_field(form) -> Field | None:
         if any(options):
             return Field(name, first.get("id", ""), options, multiselect=True)
     return None
+
+
+
+def _ciap_modal_summary(soup) -> dict | None:
+    """Documenta códigos do modal que NÃO constituem valores enviados em lsCid.
+
+    O SISAB renderiza caixas com IDs individuais (cid-W235-1, etc.), mas
+    usa um campo oculto lsCid para exportação. Sem descobrir a serialização
+    JavaScript, não podemos assumir que repetir lsCid seja equivalente.
+    """
+    hidden = soup.find("input", attrs={
+        "name": "lsCid", "type": re.compile(r"^hidden$", re.I),
+    })
+    if hidden is None:
+        return None
+    code_ids = []
+    code_pattern = re.compile(r"^(?:cid|ciap)-([A-Z0-9]+)-\d+$", re.I)
+    for element in soup.find_all("input", attrs={"type": re.compile(r"^checkbox$", re.I)}):
+        code_id = element.get("id", "")
+        if code_pattern.fullmatch(code_id):
+            code_ids.append(code_id)
+    if not code_ids:
+        return None
+    modal = soup.find(id=re.compile(r"modal.*(?:ciap|cid)", re.I))
+    return {
+        "campo_oculto": hidden.get("name"),
+        "quantidade_checkboxes": len(code_ids),
+        "exemplos_ids": code_ids[:5],
+        "modal_encontrado": modal is not None,
+        "serializacao_confirmada": False,
+        "aviso": (
+            "Os checkboxes possuem nomes individuais. O JavaScript que "
+            "preenche lsCid deve ser identificado antes de exportar CSV."
+        ),
+    }
 
 
 def _all_ciap_values(field: Field | None) -> tuple[str, ...]:
@@ -294,9 +331,10 @@ def parse_page(html: str, report_url: str) -> Page:
     check_url(action)
     tipo_producao = _extract_field(form, "tpProducao")
     ciap_cid = _extract_ciap_field(form)
+    ciap_modal = _ciap_modal_summary(soup)
     return Page(report_url, action, form.get("id", ""), view["value"], comp, linha,
                 coluna, button, fields, hidden, tipo_producao=tipo_producao,
-                ciap_cid=ciap_cid)
+                ciap_cid=ciap_cid, ciap_modal=ciap_modal)
 
 
 def sniff_csv(content: bytes) -> bool:
@@ -446,6 +484,26 @@ class Client:
         page = self.page or self.open()
         if page.ciap_cid is not None:
             return page.ciap_cid
+        if page.ciap_modal is not None:
+            target = (self.diagnostics_dir /
+                      f"diagnostico_ciap_{_diagnostic_label(self.url)}.json"
+                      if self.diagnostics_dir is not None else None)
+            if target is not None:
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps({
+                        "operacao": "inspecionar_modal_ciap_cid",
+                        "modal": page.ciap_modal,
+                        "motivo": "Serializacao de lsCid pelo JavaScript ainda desconhecida.",
+                    }, ensure_ascii=False, indent=2), encoding="utf-8")
+                except OSError as exc:
+                    LOG.warning("Diagnostico CIAP/CID nao salvo: %s", exc)
+            raise PortalError(
+                "O modal CIAP/CID já contém checkboxes no HTML, mas o campo "
+                "oculto lsCid precisa ser preenchido como o JavaScript do SISAB "
+                "determina. A exportação foi interrompida antes do POST; "
+                f"diagnóstico: {target or 'não configurado'}."
+            )
         soup = BeautifulSoup(self._last_html, "html.parser")
         form = next((f for f in soup.find_all("form")
                      if f.get("id") == page.form_id), None)
