@@ -45,4 +45,11 @@ invalid_retry <- tryCatch(network_opts(120, -1), error = function(e) e)
 stopifnot(inherits(invalid_timeout, "error"), inherits(invalid_retry, "error"))
 cat("Configuracao de timeout e tentativas: OK\n")
 
-cat("Configuracao de Python isolado: OK\n")
+stopifnot(
+  is.function(get(".sisab_git_encontrar", envir = ns)),
+  is.function(get(".sisab_preparar_git", envir = ns)),
+  is.function(get(".sisab_origens_motor", envir = ns))
+)
+# O instalador oferece alternativa por ZIP, sem depender de git no PATH.
+stopifnot(grepl("main.zip", paste(deparse(body(get(".sisab_origens_motor", envir = ns))), collapse = " "), fixed = TRUE))
+cat("Configuracao de Python isolado e instalacao sem Git: OK\n")
