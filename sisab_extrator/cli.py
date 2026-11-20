@@ -169,8 +169,10 @@ def cmd_probe(args) -> int:
                 print("  Tipo de Produção disponível: " +
                       ", ".join(f"{label} (valor {value})" for value, label in options))
             if page.ciap_cid:
-                print(f"  Filtro CIAP/CID: {len(_all_ciap_values(page.ciap_cid))} "
-                      f"valor(es) selecionável(is); campo {page.ciap_cid.name}")
+                option_count = sum(bool(v) for v in page.ciap_cid.options)
+                tipo = "selecao multipla" if page.ciap_cid.multiselect else "selecao unica"
+                print(f"  Filtro CIAP/CID: {option_count} opcoes no HTML; "
+                      f"campo {page.ciap_cid.name} ({tipo})")
             else:
                 print("  Filtro CIAP/CID: sem opções estáticas identificáveis; "
                       "pode exigir interação AJAX.")
