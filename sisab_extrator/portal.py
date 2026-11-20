@@ -80,6 +80,7 @@ class Page:
     other_fields: list[dict]
     hidden_fields: list[tuple[str, str]]
     tipo_producao: Field | None = None
+    ciap_cid: Field | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -92,6 +93,10 @@ class Page:
             "tipo_producao": (
                 {"name": self.tipo_producao.name, "options": self.tipo_producao.options}
                 if self.tipo_producao else None
+            ),
+            "ciap_cid": (
+                {"name": self.ciap_cid.name, "options": self.ciap_cid.options}
+                if self.ciap_cid else None
             ),
             "outros_campos": self.other_fields,
             "botao_csv_identificado": bool(self.csv_button),
@@ -119,6 +124,62 @@ def _extract_field(form, *keys: str) -> Field | None:
                              for o in select.find_all("option")},
                 )
     return None
+
+
+
+def _extract_ciap_field(form) -> Field | None:
+    """Encontra opcoes reais do filtro CIAP/CID, sem adivinhar valores JSF.
+
+    Formulários com widget AJAX que não apresenta opções no HTML inicial
+    precisarão de integração específica; nesse caso não enviaremos lsCid vazio.
+    """
+    def is_ciap(name: str, ident: str) -> bool:
+        key = _field_identifier(name + " " + ident)
+        return any(term in key for term in ("lscid", "ciapcid", "selectcid", "filtrocid"))
+
+    for select in form.find_all("select"):
+        name = select.get("name", "")
+        ident = select.get("id", "")
+        if is_ciap(name, ident) and name:
+            options = {o.get("value", ""): o.get_text(" ", strip=True)
+                       for o in select.find_all("option")}
+            if any(options):
+                return Field(name, ident, options)
+
+    checkboxes = [item for item in form.find_all("input")
+                  if item.get("type", "").casefold() == "checkbox"
+                  and is_ciap(item.get("name", ""), item.get("id", ""))
+                  and item.get("name")]
+    if checkboxes:
+        first = checkboxes[0]
+        name = first["name"]
+        options = {item.get("value", ""): item.get("data-label", item.get("value", ""))
+                   for item in checkboxes if item.get("name") == name}
+        if any(options):
+            return Field(name, first.get("id", ""), options)
+    return None
+
+
+def _all_ciap_values(field: Field | None) -> tuple[str, ...]:
+    """Seleciona 'Todos' explícito quando disponível, senão todas as opções.
+
+    Somente opções não vazias presentes no HTML são enviadas ao portal.
+    """
+    if field is None:
+        raise PortalError(
+            "CIAP/CID = Todos solicitado, mas o formulário inicial não expôs "
+            "valores selecionáveis. O portal pode usar AJAX/JavaScript. "
+            "Não é seguro enviar lsCid vazio ou inventar códigos. "
+            "Consulte data/inspecao/<relatorio>.json (outros_campos) para "
+            "identificar o controle antes de adaptar a integração."
+        )
+    choices = [(value, label) for value, label in field.options.items() if value]
+    if not choices:
+        raise PortalError("Filtro CIAP/CID encontrado sem opções selecionáveis.")
+    for value, label in choices:
+        if _field_identifier(label) in ("todos", "todas", "todososcodigos", "todasasopcoes"):
+            return (value,)
+    return tuple(value for value, _ in choices)
 
 
 def parse_page(html: str, report_url: str) -> Page:
@@ -198,8 +259,10 @@ def parse_page(html: str, report_url: str) -> Page:
     action = urljoin(report_url, form.get("action") or report_url)
     check_url(action)
     tipo_producao = _extract_field(form, "tpProducao")
+    ciap_cid = _extract_ciap_field(form)
     return Page(report_url, action, form.get("id", ""), view["value"], comp, linha,
-                coluna, button, fields, hidden, tipo_producao=tipo_producao)
+                coluna, button, fields, hidden, tipo_producao=tipo_producao,
+                ciap_cid=ciap_cid)
 
 
 def sniff_csv(content: bytes) -> bool:
@@ -356,6 +419,7 @@ class Client:
                 "tipo_producao": job.tipo_producao_label or job.tipo_producao,
                 "sexo": job.sexo,
                 "faixa_etaria": job.faixa_etaria,
+                "quantidade_ciap_cid": len(job.ciap_cid),
             }
             info["campos_enviados"] = {
                 "formulario": page.form_id,
@@ -392,12 +456,27 @@ class Client:
                 raise PortalError(
                     f"Tipo de Produção {job.tipo_producao!r} não existe no formulário atual."
                 )
+        if job.ciap_cid and page.ciap_cid is None:
+            raise PortalError(
+                "Filtro CIAP/CID solicitado, mas não existem opções identificáveis "
+                "no HTML do formulário. O envio foi interrompido antes do POST."
+            )
         error = None
         previous_html_signature = None
         for attempt in range(self.retries + 1):
             page = self.page or self.open()
+            if job.ciap_cid and (
+                page.ciap_cid is None or
+                any(value not in page.ciap_cid.options for value in job.ciap_cid)
+            ):
+                raise PortalError(
+                    "As opções CIAP/CID do formulário mudaram. "
+                    "Execute sisab_inspecionar() novamente antes de baixar."
+                )
             # Recriar payload a cada tentativa: ViewState e nomes JSF podem mudar.
-            hidden = [(k, v) for k, v in page.hidden_fields if k != "javax.faces.ViewState"]
+            hidden = [(k, v) for k, v in page.hidden_fields
+                      if k != "javax.faces.ViewState"
+                      and (not job.ciap_cid or k != page.ciap_cid.name)]
             fields = {k for k, _ in hidden}
             payload = hidden + [
                 (page.form_id, page.form_id),
@@ -414,9 +493,12 @@ class Client:
             ]
             if job.sexo_valor:
                 payload.append(("sexo", job.sexo_valor))
-            for key in ("lsCid", "lsSigtap"):
-                if key not in fields:
-                    payload.append((key, ""))
+            if job.ciap_cid:
+                payload.extend((page.ciap_cid.name, value) for value in job.ciap_cid)
+            # Não enviar lsCid vazio: quando CIAP/CID é uma dimensão,
+            # o SISAB pode exigir valores efetivamente selecionados.
+            if "lsSigtap" not in fields:
+                payload.append(("lsSigtap", ""))
             response = self._request("POST", page.action, data=payload)
             if sniff_csv(response.content):
                 return response.content
