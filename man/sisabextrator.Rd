@@ -4,6 +4,7 @@
 \alias{sisab_inspecionar}
 \alias{sisab_planejar}
 \alias{sisab_baixar}
+\alias{sisab_baixar_tudo}
 \alias{sisab_consolidar}
 \alias{sisab_status}
 \alias{sisab_abrir_anuais}
@@ -16,6 +17,7 @@ sisab_instalar_motor(python = "python", atualizar = FALSE)
 sisab_inspecionar(relatorio = "federal", dados = "data", python = "auto", tempo_limite = 900, tentativas = 6)
 sisab_planejar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6, tipo_producao = "none", ciap_cid = "auto")
 sisab_baixar(inicio = "auto", fim = "auto", relatorio = "all", linhas = "all", colunas = "all", idades = "all", sexos = "both", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6, tipo_producao = "none", ciap_cid = "auto")
+sisab_baixar_tudo(inicio = "auto", fim = "auto", relatorio = "all", dados = "data", aceitar_plano_grande = FALSE, consolidar = TRUE, pausa = 2, python = "auto", tempo_limite = 900, tentativas = 6, mes_validacao = "auto", matriz_compatibilidade = NULL)
 sisab_consolidar(inicio, fim, dados = "data", permitir_parcial = FALSE, python = "auto")
 sisab_status(inicio = NULL, fim = NULL, dados = "data", python = "auto")
 sisab_abrir_anuais(dados = "data", ano = NULL)
@@ -38,6 +40,8 @@ sisab_filtrar_mg(ds)
 \item{tempo_limite}{Tempo limite de inatividade da requisição HTTP em segundos (padrão 900).}
 \item{tentativas}{Número de novas tentativas após falha de rede ou resposta inválida (padrão 6).}
 \item{consolidar}{Se verdadeiro, consolida ao final do download.}
+\item{mes_validacao}{Competência usada para validar a matriz de combinações no modo abrangente; \code{"auto"} usa a primeira competência disponível.}
+\item{matriz_compatibilidade}{Arquivo JSON de combinações reais já validadas; NULL gera uma matriz em \code{dados/inspecao}.}
 \item{permitir_parcial}{Permite consolidação com consultas não concluídas.}
 \item{ano}{Ano desejado; NULL para todos os consolidados anuais.}
 \item{ds}{Dataset Arrow retornado pelas funções de leitura.}

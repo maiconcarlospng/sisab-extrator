@@ -53,7 +53,7 @@ sisab <- function(dados = "data") {
         "Explorar filtros e combinacoes", "Consultar downloads e progresso",
         "Visualizar arquivos Parquet", "Consolidar dados", "Configuracoes",
         "Sair"),
-      title = "SISAB Extrator — escolha uma acao"
+      title = "SISAB Extrator - escolha uma acao"
     )
     if (escolha == 0L || escolha == 8L) break
     tryCatch(
