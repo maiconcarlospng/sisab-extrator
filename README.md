@@ -552,25 +552,33 @@ data/
 
 ## 🌎 Quero baixar toda a série disponível
 
-Primeiro, gere um **plano** com todos os períodos e as opções identificadas:
+Use o modo abrangente para validar combinações reais antes de baixar a série:
 
 ```r
-sisab_planejar(
+sisab_baixar_tudo(
   inicio = "auto",
   fim = "auto",
   relatorio = "all",
-  linhas = "all",
-  colunas = "all",
-  tipo_producao = "all", # uma consulta por tipo listado pelo portal
-  idades = "all",
-  sexos = "both",
   aceitar_plano_grande = TRUE
 )
 ```
 
-O modo `auto` consulta o intervalo de competências oferecido pelo portal. **Revise o plano e valide uma competência antes de tentar todas as combinações:** algumas podem não ser suportadas, e a coleta completa pode exigir milhares de requisições.
+O comando testa uma competência de amostra, grava a matriz em
+`data/inspecao/compatibilidade.json` e baixa somente pares linha × coluna que
+retornaram CSV. `sem_dados` é preservado como resultado válido do teste, mas
+não é tratado como incompatibilidade. Idade e sexo ficam sem multiplicação
+automática para evitar milhões de consultas; acrescente esses filtros em uma
+extração personalizada após validar o recorte.
 
-Depois de confirmar o plano, use `sisab_baixar()` com os mesmos parâmetros. Ao concluir os downloads, a ferramenta tenta consolidar os arquivos por ano e, por fim, pelo período completo. Se houver consultas pendentes ou com erro, a consolidação completa é bloqueada para evitar uma série incompleta apresentada como definitiva.
+Para executar somente a validação e revisar a matriz:
+
+```bash
+python -m sisab_extrator matrix --report federal --validation-month 202401 \
+  --production-type all --matrix-output data/inspecao/compatibilidade.json
+```
+
+O catálogo SQLite permite retomar a operação: arquivos ZIP e Parquet existentes
+são reutilizados, e `sisab_status()` mostra erros e consultas pendentes.
 
 ## 🛠️ Se aparecer “Campos não encontrados”
 
@@ -613,7 +621,10 @@ Não por meio desses relatórios. Eles fornecem <strong>contagens agregadas</str
 <details>
 <summary><strong>Consigo obter todos os códigos CIAP/CID?</strong></summary>
 
-Somente os códigos, agrupamentos e combinações que o SISAB disponibilizar. A integração com a coluna CIAP/CID ainda precisa de validação prática.
+Somente os códigos, agrupamentos e combinações que o SISAB disponibilizar.
+Quando a lista está no HTML ou em um fragmento AJAX, o extrator envia os
+valores reais do controle múltiplo em uma única consulta; ele não inventa
+códigos nem envia `lsCid` vazio.
 </details>
 
 <details>

@@ -140,3 +140,17 @@ def test_checkbox_based_ciap_multiselect_is_supported():
     assert page.ciap_cid is not None
     assert page.ciap_cid.multiselect
     assert next(prepare("federal", None, page, args()).jobs()).ciap_cid == ("A01", "B02")
+
+
+def test_hidden_modal_ciap_select_is_detected_from_context():
+    html = with_ciap_control(
+        '<div id="ciapCidModal" style="display:none">'
+        '<label>CIAP/CID</label>'
+        '<select name="form:codigo" multiple>'
+        '<option value="A01">A01</option><option value="B02">B02</option>'
+        '</select></div>'
+    )
+    page = parse_page(html, URL)
+    assert page.ciap_cid is not None
+    assert page.ciap_cid.name == "form:codigo"
+    assert next(prepare("federal", None, page, args()).jobs()).ciap_cid == ("A01", "B02")

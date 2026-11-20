@@ -21,6 +21,8 @@
 #' @param idades "all", "none" ou uma faixa etaria especifica.
 #' @param sexos "both", "none", "Masculino" ou "Feminino".
 #' @param aceitar_plano_grande Autorizar mais de 10 mil consultas.
+#' @param matriz_compatibilidade Arquivo JSON de combinações reais já validadas
+#'   pelo comando de matriz (usado pelo modo completo).
 #' @param pausa Pausa minima entre requisicoes HTTP (segundos).
 #' @param tempo_limite Tempo maximo de inatividade em cada requisicao HTTP (segundos, padrao 900).
 #' @param tentativas Numero de novas tentativas apos falhas (padrao 6).
@@ -282,6 +284,34 @@ sisab_baixar <- function(inicio = "auto", fim = "auto", relatorio = "all",
             .sisab_network_opts(tempo_limite, tentativas))
   if (!isTRUE(consolidar)) opts <- c(opts, "--no-consolidate")
   .sisab_cli("download", opts, python)
+}
+
+#' Baixar cobertura abrangente usando combinações validadas
+#'
+#' O modo completo valida pares linha x coluna em uma competência de amostra,
+#' grava a matriz em `dados/inspecao/compatibilidade.json` e só então baixa
+#' competências usando os pares aceitos. Idade e sexo não são multiplicados
+#' automaticamente, evitando um produto cartesiano sem evidência do portal.
+#'
+#' @rdname sisabextrator
+#' @export
+sisab_baixar_tudo <- function(inicio = "auto", fim = "auto", relatorio = "all",
+                              dados = "data", aceitar_plano_grande = FALSE,
+                              consolidar = TRUE, pausa = 2, python = "auto",
+                              tempo_limite = 900, tentativas = 6,
+                              mes_validacao = "auto",
+                              matriz_compatibilidade = NULL) {
+  opts <- c("--report", match.arg(relatorio, c("all", "federal", "municipal")),
+            "--start", inicio, "--end", fim, "--data-dir", dados,
+            "--delay", as.character(pausa),
+            "--validation-month", mes_validacao,
+            .sisab_network_opts(tempo_limite, tentativas))
+  if (!is.null(matriz_compatibilidade)) {
+    opts <- c(opts, "--compatibility-matrix", matriz_compatibilidade)
+  }
+  if (isTRUE(aceitar_plano_grande)) opts <- c(opts, "--allow-large-plan")
+  if (!isTRUE(consolidar)) opts <- c(opts, "--no-consolidate")
+  .sisab_cli("download-all", opts, python)
 }
 
 #' @rdname sisabextrator

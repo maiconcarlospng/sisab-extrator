@@ -6,9 +6,12 @@ Description: Disponibiliza funcoes para executar o extrator Python de relatorios
     publicos agregados do SISAB, criar planos de consultas, baixar resultados,
     consolidar arquivos Parquet por ano e pela serie historica e ler conjuntos
     Parquet com Apache Arrow sem materializar toda a base em memoria.
-License: MIT
+License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.2
+Depends: R (>= 4.0.0)
+Imports:
+    rlang
 Suggests:
     arrow,
     dplyr,
@@ -16,3 +19,4 @@ Suggests:
     jsonlite
 URL: https://github.com/maiconcarlospng/sisab-extrator
 BugReports: https://github.com/maiconcarlospng/sisab-extrator/issues
+SystemRequirements: Python (>= 3.10); Git optional (automatic installation on Windows when winget is available)

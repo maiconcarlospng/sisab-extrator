@@ -136,22 +136,47 @@ def _extract_ciap_field(form) -> Field | None:
     Formulários com widget AJAX que não apresenta opções no HTML inicial
     precisarão de integração específica; nesse caso não enviaremos lsCid vazio.
     """
-    def is_ciap(name: str, ident: str) -> bool:
+    def is_ciap(name: str, ident: str, text: str = "") -> bool:
         key = _field_identifier(name + " " + ident)
-        return any(term in key for term in ("lscid", "ciapcid", "selectcid", "filtrocid"))
+        context = _field_identifier(text)
+        return (
+            any(term in key for term in
+                ("lscid", "ciapcid", "selectcid", "filtrocid", "listacid", "listacodigo"))
+            or "ciapcid" in context
+            or "codigociap" in context
+            or "codigocid" in context
+        )
 
     for select in form.find_all("select"):
         name = select.get("name", "")
         ident = select.get("id", "")
-        if is_ciap(name, ident) and name:
-            options = {o.get("value", ""): o.get_text(" ", strip=True)
-                       for o in select.find_all("option")}
+        options_nodes = select.find_all("option")
+        options = {o.get("value", ""): o.get_text(" ", strip=True)
+                   for o in options_nodes}
+        parent = select.parent
+        parent_marker = ""
+        if parent is not None:
+            parent_marker = " ".join(
+                [parent.get("id", ""), " ".join(parent.get("class", []))]
+            )
+        context = " ".join([select.get_text(" ", strip=True), parent_marker])
+        code_like = any(
+            re.match(r"^(?:[A-Z]\d{2,3}|[A-Z]\d{2}(?:\.\d+)?)$", value.strip(), re.I)
+            for value in options
+            if value
+        )
+        if (is_ciap(name, ident) or
+                (code_like and any(term in _field_identifier(context)
+                                   for term in ("ciap", "cid")))) and name:
             if any(options):
                 return Field(name, ident, options, multiselect=select.has_attr("multiple"))
 
     checkboxes = [item for item in form.find_all("input")
                   if item.get("type", "").casefold() == "checkbox"
-                  and is_ciap(item.get("name", ""), item.get("id", ""))
+                  and is_ciap(
+                      item.get("name", ""), item.get("id", ""),
+                      item.parent.get_text(" ", strip=True) if item.parent else "",
+                  )
                   and item.get("name")]
     if checkboxes:
         first = checkboxes[0]

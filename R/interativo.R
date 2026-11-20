@@ -15,21 +15,60 @@ sisab <- function(dados = "data") {
     stop("O menu sisab() requer uma sessao interativa do RStudio/R. ",
          "Em scripts, use sisab_baixar() ou sisab_visualizar().", call. = FALSE)
   }
+  .sisab_menu_baixar_tudo <- function(dados) {
+    resposta <- tolower(trimws(readline(
+      "Validar combinacoes em uma competencia e baixar todas as competencias? [s/N] "
+    )))
+    if (!identical(resposta, "s") && !identical(resposta, "sim")) {
+      message("Operacao cancelada.")
+      return(invisible(NULL))
+    }
+    relatorios <- c("Municipal", "Federal", "Todos")
+    r <- utils::menu(relatorios, title = "Qual relatorio?")
+    if (r == 0L) return(invisible(NULL))
+    relatorio <- c("municipal", "federal", "all")[r]
+    sisab_baixar_tudo(relatorio = relatorio, dados = dados)
+  }
+  .sisab_menu_explorar <- function(dados) {
+    relatorio <- c("federal", "municipal")[utils::menu(
+      c("Federal", "Municipal"), title = "Qual relatorio?"
+    )]
+    if (is.na(relatorio)) return(invisible(NULL))
+    sisab_inspecionar(relatorio = relatorio, dados = dados)
+    message("Opcoes e campos reais salvos em ", file.path(dados, "inspecao"),
+            ". Use sisab_planejar() para montar uma consulta.")
+  }
+  .sisab_menu_consolidar <- function(dados) {
+    inicio <- .sisab_mes("Competencia inicial (AAAAMM): ")
+    fim <- .sisab_mes_valor(trimws(readline("Competencia final (AAAAMM): ")))
+    sisab_consolidar(inicio, fim, dados = dados)
+  }
+  .sisab_menu_configuracoes <- function(dados) {
+    message("Diretorio de dados atual: ", normalizePath(dados, mustWork = FALSE))
+    message("O motor Python isolado e configurado automaticamente no primeiro uso.")
+  }
   repeat {
     escolha <- utils::menu(
-      c("Baixar dados do SISAB", "Visualizar arquivo Parquet", "Ver status",
+      c("Baixar dados", "Baixar tudo (extracao abrangente)",
+        "Explorar filtros e combinacoes", "Consultar downloads e progresso",
+        "Visualizar arquivos Parquet", "Consolidar dados", "Configuracoes",
         "Sair"),
       title = "SISAB Extrator — escolha uma acao"
     )
-    if (escolha == 0L || escolha == 4L) break
+    if (escolha == 0L || escolha == 8L) break
     tryCatch(
       switch(escolha,
              .sisab_menu_baixar(dados),
+             .sisab_menu_baixar_tudo(dados),
+             .sisab_menu_explorar(dados),
+             sisab_status(dados = dados),
              sisab_visualizar(),
-             sisab_status(dados = dados)),
+             .sisab_menu_consolidar(dados),
+             .sisab_menu_configuracoes(dados)),
       error = function(e) message("SISAB Extrator: ", conditionMessage(e))
     )
   }
+
   invisible(NULL)
 }
 
