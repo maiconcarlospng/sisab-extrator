@@ -220,6 +220,10 @@ def cmd_probe(args) -> int:
                 tipo = "selecao multipla" if page.ciap_cid.multiselect else "selecao unica"
                 print(f"  Filtro CIAP/CID: {option_count} opcoes no HTML; "
                       f"campo {page.ciap_cid.name} ({tipo})")
+            elif page.ciap_modal:
+                print("  Filtro CIAP/CID: modal no HTML inicial com "
+                      f"{page.ciap_modal['quantidade_checkboxes']} checkboxes; "
+                      "campo oculto lsCid; formato de envio ainda não confirmado.")
             else:
                 print("  Filtro CIAP/CID: sem opções estáticas identificáveis; "
                       "pode exigir interação AJAX.")
